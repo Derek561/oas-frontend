@@ -1,8 +1,8 @@
 import './globals.css';
 
 export const metadata = {
-  title: 'OAS Frontend',
-  description: 'Oceanside Housing Portal',
+  title: 'Oceanside Housing Systems',
+  description: 'Internal management dashboard for housing operations',
 };
 
 export default function RootLayout({ children }) {
