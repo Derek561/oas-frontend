@@ -1,35 +1,50 @@
 'use client';
+import React, { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { useEffect } from 'react';
 import { supabase } from '../utils/supabaseClient';
 
-export default function DashboardLayout({ children }) {
+export default function DashboardPage() {
   const router = useRouter();
+  const [user, setUser] = useState(null);
 
   useEffect(() => {
-    const { data: listener } = supabase.auth.onAuthStateChange((event, session) => {
-      if (!session) router.push('/login');
-    });
-    return () => listener.subscription.unsubscribe();
+    const getUser = async () => {
+      const { data, error } = await supabase.auth.getUser();
+      if (error || !data?.user) {
+        router.push('/login');
+      } else {
+        setUser(data.user);
+      }
+    };
+
+    getUser();
   }, [router]);
 
-  return (
-    <div className="flex min-h-screen bg-gray-100">
-      <aside className="w-64 bg-slate-800 text-white flex flex-col p-4">
-        <h2 className="text-xl font-bold mb-6">MVP Dashboard</h2>
-        <nav className="space-y-2">
-          <a href="/dashboard" className="block p-2 rounded hover:bg-slate-700">Dashboard</a>
-          <a href="/clients" className="block p-2 rounded hover:bg-slate-700">Clients</a>
-          <a href="/census" className="block p-2 rounded hover:bg-slate-700">Census</a>
-          <a href="/shiftlogs" className="block p-2 rounded hover:bg-slate-700">Shift Logs</a>
-          <a href="/behavior" className="block p-2 rounded hover:bg-slate-700">Behavior Notes</a>
-          <a href="/maintenance" className="block p-2 rounded hover:bg-slate-700">Maintenance</a>
-        </nav>
-      </aside>
+  if (!user) {
+    return (
+      <div className="flex h-screen justify-center items-center text-gray-700">
+        Loading...
+      </div>
+    );
+  }
 
-      <main className="flex-1 p-8">
-        {children}
-      </main>
+  return (
+    <div>
+      <h1 className="text-3xl font-semibold mb-4">Welcome back, {user.email}</h1>
+      <div className="grid grid-cols-3 gap-4">
+        <div className="bg-white shadow rounded p-4">
+          <h2 className="text-lg font-bold">House Census</h2>
+          <p>View capacity and occupancy across all houses.</p>
+        </div>
+        <div className="bg-white shadow rounded p-4">
+          <h2 className="text-lg font-bold">Room Census</h2>
+          <p>Drill down into individual rooms, capacity, and availability.</p>
+        </div>
+        <div className="bg-white shadow rounded p-4">
+          <h2 className="text-lg font-bold">Enrollment Roster</h2>
+          <p>See which clients are admitted, where they’re placed, and their status.</p>
+        </div>
+      </div>
     </div>
   );
 }
