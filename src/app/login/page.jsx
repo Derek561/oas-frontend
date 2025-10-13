@@ -1,5 +1,4 @@
 'use client';
-
 import { Auth } from '@supabase/auth-ui-react';
 import { ThemeSupa } from '@supabase/auth-ui-shared';
 import { supabase } from '../utils/supabaseClient';
@@ -22,16 +21,18 @@ export default function LoginPage() {
   }, [router]);
 
   return (
-    <main className="flex items-center justify-center min-h-screen bg-gray-100">
-      <div className="bg-white shadow-lg rounded-2xl p-8 w-full max-w-md">
-        <h1 className="text-2xl font-semibold text-center mb-6 text-blue-700">Oceanside Housing Systems</h1>
+    <div className="flex items-center justify-center min-h-screen bg-gray-100">
+      <div className="bg-white shadow-lg rounded-md p-8 w-full max-w-md">
+        <h1 className="text-2xl font-semibold text-center mb-6">
+          Oceanside Housing Portal
+        </h1>
         <Auth
           supabaseClient={supabase}
-          providers={['google']}
           appearance={{ theme: ThemeSupa }}
-          theme="light"
+          theme="default"
+          providers={[]}
         />
       </div>
-    </main>
+    </div>
   );
 }
