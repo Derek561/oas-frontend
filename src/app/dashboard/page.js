@@ -1,57 +1,38 @@
 'use client';
-
 import { useEffect, useState } from 'react';
-import { supabase } from '../utils/supabaseClient';
 import { useRouter } from 'next/navigation';
+import { supabase } from '../utils/supabaseClient';
 
-export default function Dashboard() {
-  const router = useRouter();
+export default function DashboardPage() {
   const [user, setUser] = useState(null);
+  const router = useRouter();
 
   useEffect(() => {
-    async function getUser() {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) router.push('/login');
-      else setUser(user);
-    }
-    getUser();
+    supabase.auth.getUser().then(({ data }) => {
+      if (!data?.user) router.push('/login');
+      else setUser(data.user);
+    });
   }, [router]);
 
-  async function handleLogout() {
-    await supabase.auth.signOut();
-    router.push('/login');
-  }
+  if (!user) return <p className="text-center mt-10 text-gray-500">Loading dashboard...</p>;
 
   return (
-    <main className="min-h-screen bg-gray-50 flex flex-col">
-      <nav className="bg-blue-800 text-white p-4 flex justify-between items-center shadow-md">
-        <h1 className="text-lg font-semibold">Oceanside Housing Systems</h1>
-        <button
-          onClick={handleLogout}
-          className="bg-white text-blue-800 px-4 py-2 rounded hover:bg-gray-200 transition"
-        >
-          Logout
-        </button>
-      </nav>
-
-      <div className="flex-1 flex flex-col items-center justify-center p-10 text-center">
-        <h2 className="text-2xl font-semibold mb-8">Welcome, {user?.email || 'User'} 👋</h2>
-
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-3xl">
-          <Card title="🏠 House Census" description="View capacity and occupancy across all houses." link="#" />
-          <Card title="📋 Room Census" description="Drill down into individual rooms, capacity, and availability." link="#" />
-          <Card title="🧾 Enrollment Roster" description="See which clients are admitted, where they’re placed, and their current status." link="#" />
+    <div>
+      <h1 className="text-3xl font-bold mb-8 text-slate-800">Oceanside Housing Systems</h1>
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+        <div className="p-6 bg-white rounded-xl shadow hover:shadow-lg transition">
+          <h2 className="text-xl font-semibold mb-2">🏠 House Census</h2>
+          <p className="text-gray-600">View capacity and occupancy across all houses.</p>
+        </div>
+        <div className="p-6 bg-white rounded-xl shadow hover:shadow-lg transition">
+          <h2 className="text-xl font-semibold mb-2">🛏️ Room Census</h2>
+          <p className="text-gray-600">Drill into individual rooms, capacity, and availability.</p>
+        </div>
+        <div className="p-6 bg-white rounded-xl shadow hover:shadow-lg transition">
+          <h2 className="text-xl font-semibold mb-2">📋 Enrollment Roster</h2>
+          <p className="text-gray-600">See which clients are admitted, where they’re placed, and their status.</p>
         </div>
       </div>
-    </main>
-  );
-}
-
-function Card({ title, description, link }) {
-  return (
-    <a href={link} className="bg-white shadow-md hover:shadow-lg rounded-xl p-6 transition border border-gray-200">
-      <h3 className="text-xl font-bold mb-2 text-blue-700">{title}</h3>
-      <p className="text-gray-600 text-sm">{description}</p>
-    </a>
+    </div>
   );
 }
