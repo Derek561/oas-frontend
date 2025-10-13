@@ -1,50 +1,48 @@
 'use client';
-import React, { useEffect, useState } from 'react';
+import React from 'react';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { supabase } from '../utils/supabaseClient';
 
-export default function DashboardPage() {
+export default function DashboardLayout({ children }) {
   const router = useRouter();
-  const [user, setUser] = useState(null);
 
-  useEffect(() => {
-    const getUser = async () => {
-      const { data, error } = await supabase.auth.getUser();
-      if (error || !data?.user) {
-        router.push('/login');
-      } else {
-        setUser(data.user);
-      }
-    };
-
-    getUser();
-  }, [router]);
-
-  if (!user) {
-    return (
-      <div className="flex h-screen justify-center items-center text-gray-700">
-        Loading...
-      </div>
-    );
-  }
+  const handleLogout = async () => {
+    await supabase.auth.signOut();
+    router.push('/login');
+  };
 
   return (
-    <div>
-      <h1 className="text-3xl font-semibold mb-4">Welcome back, {user.email}</h1>
-      <div className="grid grid-cols-3 gap-4">
-        <div className="bg-white shadow rounded p-4">
-          <h2 className="text-lg font-bold">House Census</h2>
-          <p>View capacity and occupancy across all houses.</p>
+    <div className="min-h-screen flex">
+      {/* Sidebar */}
+      <aside className="w-64 bg-gray-800 text-white flex flex-col">
+        <div className="p-4 text-2xl font-bold border-b border-gray-700">
+          OHS Dashboard
         </div>
-        <div className="bg-white shadow rounded p-4">
-          <h2 className="text-lg font-bold">Room Census</h2>
-          <p>Drill down into individual rooms, capacity, and availability.</p>
-        </div>
-        <div className="bg-white shadow rounded p-4">
-          <h2 className="text-lg font-bold">Enrollment Roster</h2>
-          <p>See which clients are admitted, where they’re placed, and their status.</p>
-        </div>
-      </div>
+        <nav className="flex-1 p-4 space-y-2">
+          <Link href="/dashboard" className="block p-2 rounded hover:bg-gray-700">
+            Home
+          </Link>
+          <Link href="/dashboard/clients" className="block p-2 rounded hover:bg-gray-700">
+            Clients
+          </Link>
+          <Link href="/dashboard/census" className="block p-2 rounded hover:bg-gray-700">
+            Census
+          </Link>
+          <Link href="/dashboard/reports" className="block p-2 rounded hover:bg-gray-700">
+            Reports
+          </Link>
+        </nav>
+        <button
+          onClick={handleLogout}
+          className="m-4 bg-red-500 hover:bg-red-600 p-2 rounded"
+        >
+          Logout
+        </button>
+      </aside>
+
+      {/* Main content */}
+      <main className="flex-1 bg-gray-100 p-6">{children}</main>
     </div>
   );
 }
