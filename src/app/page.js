@@ -1,20 +1,29 @@
-'use client';
-
-import { useEffect } from 'react';
-import { useRouter } from 'next/navigation';
-import { supabase } from './utils/supabaseClient';
+'use client'
+import { useRouter } from 'next/navigation'
+import { useEffect, useState } from 'react'
+import { supabase } from './utils/supabaseClient'
+import LoadingSpinner from '../components/LoadingSpinner'
 
 export default function Home() {
-  const router = useRouter();
+  const router = useRouter()
+  const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    async function checkUser() {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (user) router.push('/dashboard');
-      else router.push('/login');
+    const checkSession = async () => {
+      const { data } = await supabase.auth.getSession()
+      if (data.session) {
+        router.replace('/dashboard')
+      } else {
+        router.replace('/login')
+      }
+      setLoading(false)
     }
-    checkUser();
-  }, [router]);
+    checkSession()
+  }, [router])
 
-  return null;
+  if (loading) {
+    return <LoadingSpinner message="Hold On Here Comes the BOOM..." />
+  }
+
+  return null
 }

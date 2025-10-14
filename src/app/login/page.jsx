@@ -1,37 +1,51 @@
 'use client';
-import { Auth } from '@supabase/auth-ui-react';
-import { ThemeSupa } from '@supabase/auth-ui-shared';
-import { supabase } from '../utils/supabaseClient';
-import { useEffect } from 'react';
-import { useRouter } from 'next/navigation';
+
+import { createClient } from '@supabase/supabase-js';
+import { useState } from 'react';
+
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL,
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+);
 
 export default function LoginPage() {
-  const router = useRouter();
+  const [email, setEmail] = useState('');
+  const [message, setMessage] = useState('');
 
-  useEffect(() => {
-    const { data: authListener } = supabase.auth.onAuthStateChange((event, session) => {
-      if (session && session.user) {
-        router.push('/dashboard');
-      }
-    });
+  const handleLogin = async (e) => {
+    e.preventDefault();
+    const { error } = await supabase.auth.signInWithOtp({ email });
 
-    return () => {
-      authListener.subscription.unsubscribe();
-    };
-  }, [router]);
+    if (error) setMessage(error.message);
+    else setMessage('Check your email for the login link!');
+  };
 
   return (
-    <div className="flex items-center justify-center min-h-screen bg-gray-100">
-      <div className="bg-white shadow-lg rounded-md p-8 w-full max-w-md">
-        <h1 className="text-2xl font-semibold text-center mb-6">
+    <div className="flex flex-col items-center justify-center min-h-screen bg-gray-50">
+      <div className="w-full max-w-sm bg-white shadow-md rounded-2xl p-6">
+        <h1 className="text-2xl font-semibold text-center mb-4">
           Oceanside Housing Portal
         </h1>
-        <Auth
-          supabaseClient={supabase}
-          appearance={{ theme: ThemeSupa }}
-          theme="default"
-          providers={[]}
-        />
+
+        <form onSubmit={handleLogin} className="space-y-4">
+          <input
+            type="email"
+            placeholder="Your email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            className="w-full border border-gray-300 rounded-lg px-4 py-2 focus:outline-none focus:ring focus:ring-blue-400"
+          />
+          <button
+            type="submit"
+            className="w-full bg-blue-600 text-white rounded-lg py-2 hover:bg-blue-700 transition"
+          >
+            Send Magic Link
+          </button>
+        </form>
+
+        {message && (
+          <p className="mt-4 text-center text-sm text-gray-700">{message}</p>
+        )}
       </div>
     </div>
   );
