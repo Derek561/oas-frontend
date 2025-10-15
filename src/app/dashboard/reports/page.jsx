@@ -6,7 +6,6 @@ import React from "react";
 
 export default function ReportsPage() {
   const supabase = createClient();
-
   return (
     <div className="p-6">
       <h1 className="text-2xl font-semibold mb-4">Reports</h1>
