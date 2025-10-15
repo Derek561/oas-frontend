@@ -1,65 +1,28 @@
-"use client"
+"use client";
+import Link from "next/link";
 
-import { useEffect, useState } from "react"
-import { useRouter } from "next/navigation"
-import { supabase } from "@/lib/supabaseClient"
-import LoadingOverlay from "@/components/LoadingOverlay"
-import LogoutButton from "@/components/LogoutButton"
-
-export default function DashboardPage() {
-  const router = useRouter()
-  const [user, setUser] = useState(null)
-  const [loading, setLoading] = useState(true)
-
-  useEffect(() => {
-    const fetchUser = async () => {
-      try {
-        const { data, error } = await supabase.auth.getUser()
-        if (error) throw error
-        if (!data.user) {
-          router.replace("/login") // Redirect if not logged in
-        } else {
-          setUser(data.user)
-        }
-      } catch (err) {
-        console.error("Auth check failed:", err.message)
-        router.replace("/login")
-      } finally {
-        setLoading(false)
-      }
-    }
-
-    fetchUser()
-  }, [router])
-
-  if (loading) {
-    return <LoadingOverlay text="Hold on — verifying your session..." />
-  }
-
-  if (!user) return null // avoid flash before redirect
-
+export default function HomePage() {
   return (
-    <div className="p-6">
-      <h1 className="text-2xl font-semibold mb-4">
-        Welcome back, {user.email}
-      </h1>
+    <main className="flex min-h-screen flex-col items-center justify-center p-8 bg-gray-50">
+      <div className="max-w-md w-full bg-white rounded-xl shadow-lg p-8 text-center">
+        <h1 className="text-3xl font-bold mb-4 text-gray-800">
+          Oceanside Housing Portal
+        </h1>
+        <p className="text-gray-600 mb-6">
+          Secure access to your resident and operations dashboard.
+        </p>
 
-      <div className="grid grid-cols-3 gap-4">
-        <div className="bg-white shadow rounded p-4">
-          <h2 className="text-lg font-bold">House Census</h2>
-          <p>View capacity and occupancy across all houses.</p>
-        </div>
-        <div className="bg-white shadow rounded p-4">
-          <h2 className="text-lg font-bold">Room Census</h2>
-          <p>Drill down into rooms, capacity, and availability.</p>
-        </div>
-        <div className="bg-white shadow rounded p-4">
-          <h2 className="text-lg font-bold">Enrollment Roster</h2>
-          <p>See which clients are admitted and their status.</p>
-        </div>
+        <Link
+          href="/login"
+          className="bg-blue-600 hover:bg-blue-700 text-white font-semibold px-6 py-2 rounded-lg transition-all duration-200"
+        >
+          Sign In
+        </Link>
+
+        <p className="text-xs text-gray-400 mt-6">
+          © {new Date().getFullYear()} Oceanside Housing LLC. All rights reserved.
+        </p>
       </div>
-
-      <LogoutButton />
-    </div>
-  )
+    </main>
+  );
 }

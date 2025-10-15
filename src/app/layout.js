@@ -1,27 +1,17 @@
-'use client'
+import "./globals.css";
 
-import './globals.css'
-import { useEffect } from 'react'
-import { supabase } from './utils/supabaseClient'
+export const metadata = {
+  title: "Oceanside Housing Dashboard",
+  description:
+    "A secure portal for managing residents, maintenance, and reports at Oceanside Housing LLC.",
+};
 
 export default function RootLayout({ children }) {
-  useEffect(() => {
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, session) => {
-      if (session) {
-        localStorage.setItem('ohs-session', JSON.stringify(session))
-      } else {
-        localStorage.removeItem('ohs-session')
-      }
-    })
-
-    return () => subscription.unsubscribe()
-  }, [])
-
   return (
     <html lang="en">
-      <body>{children}</body>
+      <body className="bg-gray-50 text-gray-900 min-h-screen">
+        {children}
+      </body>
     </html>
-  )
+  );
 }
