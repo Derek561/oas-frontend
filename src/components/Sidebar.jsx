@@ -1,24 +1,22 @@
+'use client'
 import Link from 'next/link'
+import LogoutButton from '@/components/LogoutButton'
 
-export default function Sidebar({ onLogout }) {
+export default function Sidebar() {
   return (
-    <div className="flex flex-col justify-between h-screen w-56 bg-slate-800 text-white">
-      <nav className="p-4 space-y-3">
-        <h2 className="text-xl font-semibold mb-4">OHS Dashboard</h2>
-        <Link href="/dashboard" className="block hover:text-blue-300">Home</Link>
-        <Link href="/dashboard/clients" className="block hover:text-blue-300">Clients</Link>
-        <Link href="/dashboard/census" className="block hover:text-blue-300">Census</Link>
-        <Link href="/dashboard/reports" className="block hover:text-blue-300">Reports</Link>
-      </nav>
-
-      <div className="p-4">
-        <button
-          onClick={onLogout}
-          className="w-full bg-red-500 hover:bg-red-600 text-white font-semibold py-2 rounded transition-all duration-150"
-        >
-          Logout
-        </button>
+    <aside className="w-64 h-screen bg-slate-900 text-white flex flex-col justify-between">
+      <div>
+        <div className="text-lg font-bold p-4 border-b border-slate-700">OHS Dashboard</div>
+        <nav className="flex flex-col p-4 space-y-2">
+          <Link href="/dashboard" className="hover:bg-slate-800 rounded-md px-3 py-2">Home</Link>
+          <Link href="/clients" className="hover:bg-slate-800 rounded-md px-3 py-2">Clients</Link>
+          <Link href="/census" className="hover:bg-slate-800 rounded-md px-3 py-2">Census</Link>
+          <Link href="/reports" className="hover:bg-slate-800 rounded-md px-3 py-2">Reports</Link>
+        </nav>
       </div>
-    </div>
+      <div className="p-4 border-t border-slate-700">
+        <LogoutButton />
+      </div>
+    </aside>
   )
 }
