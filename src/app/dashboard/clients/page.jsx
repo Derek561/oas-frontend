@@ -1,5 +1,7 @@
 'use client';
-import React from 'react';
+export const dynamic = 'force-dynamic';  // 👈 add this line here
+
+import React from "react";
 
 export default function ClientsPage() {
   return (
