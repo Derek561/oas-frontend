@@ -1,6 +1,9 @@
 "use client";
 export const dynamic = "force-dynamic";
 
+import { createClient } from "@/lib/supabaseClient";
+
+
 import React from "react";
 
 export default function ClientsPage() {
