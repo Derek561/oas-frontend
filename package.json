@@ -23,7 +23,9 @@
     "npm": "10.9.3"
   },
   "devDependencies": {
+    "@typescript-eslint/parser": "^8.46.1",
     "eslint": "^9.37.0",
-    "eslint-config-next": "^15.5.5"
+    "eslint-config-next": "^15.5.5",
+    "typescript": "^5.9.3"
   }
 }
