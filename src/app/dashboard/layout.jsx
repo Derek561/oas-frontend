@@ -1,33 +1,16 @@
-'use client'
-import { useRouter } from 'next/navigation'
-import { supabase } from '../utils/supabaseClient'
-import Sidebar from '../../components/Sidebar'
-import { useEffect } from 'react'
+// src/app/dashboard/layout.js
+// ───────────────────────────────────────────────
+// TRUTH BUILD: Forces runtime rendering globally
+// Prevents static prerender failures on Netlify
+// ───────────────────────────────────────────────
+
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
 
 export default function DashboardLayout({ children }) {
-  const router = useRouter()
-
-  const handleLogout = async () => {
-    await supabase.auth.signOut()
-    localStorage.removeItem('ohs-session')
-    router.push('/login')
-  }
-
-  // Optional: redirect if no active session
-  useEffect(() => {
-    const checkSession = async () => {
-      const { data } = await supabase.auth.getSession()
-      if (!data.session) router.replace('/login')
-    }
-    checkSession()
-  }, [router])
-
   return (
-    <div className="flex min-h-screen">
-      <Sidebar onLogout={handleLogout} />
-      <main className="flex-1 p-6 bg-gray-100">
-        {children}
-      </main>
-    </div>
-  )
+    <main className="min-h-screen bg-gray-50 text-gray-900">
+      <div className="max-w-6xl mx-auto px-6 py-10">{children}</div>
+    </main>
+  );
 }
