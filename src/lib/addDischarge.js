@@ -1,14 +1,14 @@
-import { createClient } from '@/lib/supabaseClient'
-import { addAuditLog } from './addAuditLog'
+import { supabase } from '@/lib/supabaseClient'
 
-export async function addDischarge(clientId, staffId, reason, notes) {
-  const supabase = createClient()
-  const { data, error } = await supabase.from('discharges').insert([
-    { client_id: clientId, staff_id: staffId, reason, notes }
-  ])
+export async function addDischarge(dischargeData) {
+  const { data, error } = await supabase
+    .from('discharges')
+    .insert([dischargeData])
 
-  if (!error) {
-    await addAuditLog(staffId, 'discharge_client', clientId, { reason, notes })
+  if (error) {
+    console.error('Error adding discharge:', error.message)
+    throw error
   }
-  return { data, error }
+
+  return data
 }

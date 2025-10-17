@@ -1,8 +1,17 @@
-import { createClient } from '@/lib/supabaseClient'
+import { supabase } from '@/lib/supabaseClient'
 
-export async function addAuditLog(userId, action, target = null, details = {}) {
-  const supabase = createClient()
-  await supabase.from('audit_logs').insert([
-    { user_id: userId, action, target, details }
+export async function addAuditLog(action, details, staff_id) {
+  const { error } = await supabase.from('audit_logs').insert([
+    {
+      action,
+      details,
+      staff_id,
+      created_at: new Date(),
+    },
   ])
+
+  if (error) {
+    console.error('Error adding audit log:', error.message)
+    throw error
+  }
 }

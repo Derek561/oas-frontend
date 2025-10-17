@@ -8,7 +8,7 @@ export const supabase = createBrowserClient(
       persistSession: true,
       autoRefreshToken: true,
       detectSessionInUrl: true,
-      storage: localStorage
-    }
+      storage: localStorage,
+    },
   }
 )
