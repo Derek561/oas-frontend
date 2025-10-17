@@ -1,52 +1,132 @@
-'use client';
+'use client'
 
-import { createClient } from '@supabase/supabase-js';
-import { useState } from 'react';
+import { useState } from 'react'
+import { createClient } from '@supabase/supabase-js'
+import { saveStaffSession } from '@/lib/getActiveStaff'
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-);
+)
 
 export default function LoginPage() {
-  const [email, setEmail] = useState('');
-  const [message, setMessage] = useState('');
+  const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
+  const [pin, setPin] = useState('')
+  const [mode, setMode] = useState('pin')
+  const [error, setError] = useState('')
+  const [loading, setLoading] = useState(false)
 
-  const handleLogin = async (e) => {
-    e.preventDefault();
-    const { error } = await supabase.auth.signInWithOtp({ email });
+  async function handleAdminLogin(e) {
+    e.preventDefault()
+    setLoading(true)
+    const { data, error } = await supabase.auth.signInWithPassword({ email, password })
+    setLoading(false)
+    if (error) return setError(error.message)
+    window.location.href = '/dashboard'
+  }
 
-    if (error) setMessage(error.message);
-    else setMessage('Check your email for the login link!');
-  };
+  async function handleStaffLogin(e) {
+    e.preventDefault()
+    setLoading(true)
+    setError('')
+
+    const { data, error } = await supabase
+      .from('staff')
+      .select('id')
+      .eq('pin_code', pin)
+      .single()
+
+    if (error || !data) {
+      setLoading(false)
+      return setError('Invalid PIN')
+    }
+
+    const { data: session, error: sessionError } = await supabase
+      .from('staff_sessions')
+      .insert({ staff_id: data.id })
+      .select('id')
+      .single()
+
+    if (sessionError) {
+      setLoading(false)
+      return setError('Could not start session')
+    }
+
+    saveStaffSession(session.id)
+    window.location.href = '/dashboard'
+  }
 
   return (
-    <div className="flex flex-col items-center justify-center min-h-screen bg-gray-50">
-      <div className="w-full max-w-sm bg-white shadow-md rounded-2xl p-6">
-        <h1 className="text-2xl font-semibold text-center mb-4">
-          Oceanside Housing Portal
+    <div className="min-h-screen flex flex-col items-center justify-center bg-gray-50">
+      <div className="bg-white shadow-lg rounded-xl p-8 w-full max-w-sm">
+        <h1 className="text-2xl font-semibold mb-4 text-center text-gray-800">
+          Oceanside Housing Login
         </h1>
 
-        <form onSubmit={handleLogin} className="space-y-4">
-          <input
-            type="email"
-            placeholder="Your email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            className="w-full border border-gray-300 rounded-lg px-4 py-2 focus:outline-none focus:ring focus:ring-blue-400"
-          />
+        <div className="flex justify-center mb-6">
           <button
-            type="submit"
-            className="w-full bg-blue-600 text-white rounded-lg py-2 hover:bg-blue-700 transition"
+            className={`px-4 py-2 rounded-l ${mode === 'pin' ? 'bg-blue-500 text-white' : 'bg-gray-200'}`}
+            onClick={() => setMode('pin')}
           >
-            Send Magic Link
+            Staff (PIN)
           </button>
-        </form>
+          <button
+            className={`px-4 py-2 rounded-r ${mode === 'admin' ? 'bg-blue-500 text-white' : 'bg-gray-200'}`}
+            onClick={() => setMode('admin')}
+          >
+            Admin
+          </button>
+        </div>
 
-        {message && (
-          <p className="mt-4 text-center text-sm text-gray-700">{message}</p>
+        {mode === 'admin' ? (
+          <form onSubmit={handleAdminLogin} className="space-y-4">
+            <input
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="Email"
+              className="w-full border rounded p-2"
+              required
+            />
+            <input
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              placeholder="Password"
+              className="w-full border rounded p-2"
+              required
+            />
+            <button
+              type="submit"
+              disabled={loading}
+              className="w-full bg-blue-600 text-white py-2 rounded hover:bg-blue-700"
+            >
+              {loading ? 'Logging in...' : 'Login'}
+            </button>
+          </form>
+        ) : (
+          <form onSubmit={handleStaffLogin} className="space-y-4">
+            <input
+              type="password"
+              value={pin}
+              onChange={(e) => setPin(e.target.value)}
+              placeholder="Enter PIN"
+              className="w-full border rounded p-2"
+              required
+            />
+            <button
+              type="submit"
+              disabled={loading}
+              className="w-full bg-blue-600 text-white py-2 rounded hover:bg-blue-700"
+            >
+              {loading ? 'Verifying...' : 'Login with PIN'}
+            </button>
+          </form>
         )}
+
+        {error && <p className="text-red-500 text-center mt-4">{error}</p>}
       </div>
     </div>
-  );
+  )
 }

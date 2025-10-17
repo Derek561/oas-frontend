@@ -1,22 +1,36 @@
-'use client'
-import Link from 'next/link'
-import LogoutButton from '@/components/LogoutButton'
+"use client";
+import Link from "next/link";
+import { usePathname } from "next/navigation";
 
-export default function Sidebar() {
+export default function Sidebar({ role = "user" }) {
+  const pathname = usePathname();
+
+  const navItems = [
+    { href: "/dashboard/clients", label: "Clients", roles: ["user", "admin", "manager"] },
+    { href: "/dashboard/maintenance", label: "Maintenance", roles: ["admin", "manager"] },
+    { href: "/dashboard/reports", label: "Reports", roles: ["admin"] },
+    { href: "/dashboard/census", label: "Census", roles: ["user", "admin", "manager"] },
+  ];
+
   return (
-    <aside className="w-64 h-screen bg-slate-900 text-white flex flex-col justify-between">
-      <div>
-        <div className="text-lg font-bold p-4 border-b border-slate-700">OHS Dashboard</div>
-        <nav className="flex flex-col p-4 space-y-2">
-          <Link href="/dashboard" className="hover:bg-slate-800 rounded-md px-3 py-2">Home</Link>
-          <Link href="/clients" className="hover:bg-slate-800 rounded-md px-3 py-2">Clients</Link>
-          <Link href="/census" className="hover:bg-slate-800 rounded-md px-3 py-2">Census</Link>
-          <Link href="/reports" className="hover:bg-slate-800 rounded-md px-3 py-2">Reports</Link>
-        </nav>
-      </div>
-      <div className="p-4 border-t border-slate-700">
-        <LogoutButton />
-      </div>
+    <aside className="w-64 bg-gray-50 border-r border-gray-200 h-screen p-4">
+      <nav className="space-y-2">
+        {navItems
+          .filter((item) => item.roles.includes(role))
+          .map((item) => (
+            <Link
+              key={item.href}
+              href={item.href}
+              className={`block px-3 py-2 rounded-md text-sm font-medium ${
+                pathname === item.href
+                  ? "bg-blue-100 text-blue-800"
+                  : "hover:bg-gray-100 text-gray-700"
+              }`}
+            >
+              {item.label}
+            </Link>
+          ))}
+      </nav>
     </aside>
-  )
+  );
 }

@@ -1,29 +1,33 @@
-// src/app/dashboard/reports/page.jsx
-// ───────────────────────────────────────────────
-// Reports viewer placeholder
-// ───────────────────────────────────────────────
-
 "use client";
-
-import React from "react";
+import { useEffect, useState } from "react";
 import { createClient } from "@/lib/supabaseClient";
 
 export default function ReportsPage() {
   const supabase = createClient();
+  const [reports, setReports] = useState([]);
+
+  useEffect(() => {
+    async function fetchReports() {
+      const { data, error } = await supabase.from("shift_logs").select("*").order("created_at", { ascending: false });
+      if (!error) setReports(data || []);
+    }
+    fetchReports();
+  }, [supabase]);
 
   return (
-    <section className="p-6">
-      <h1 className="text-2xl font-semibold mb-4">Reports</h1>
-      <p className="text-gray-700 mb-6">
-        This is the Reports page. Future versions will load analytics and
-        visualizations directly from Supabase queries.
-      </p>
-
-      <div className="rounded-lg bg-white shadow-md p-4 border border-gray-200">
-        <p className="text-gray-600">
-          Report generation system is connected — awaiting dataset bindings.
-        </p>
-      </div>
-    </section>
+    <div>
+      <h2 className="text-2xl font-semibold mb-4">Shift Reports</h2>
+      {reports.length === 0 ? (
+        <p className="text-gray-500">No reports logged yet.</p>
+      ) : (
+        <ul className="divide-y divide-gray-200">
+          {reports.map((r) => (
+            <li key={r.id} className="py-2">
+              <strong>{r.resident_id}</strong> — {r.behavior_notes || "No notes"}
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
   );
 }

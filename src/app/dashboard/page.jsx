@@ -1,21 +1,28 @@
-// src/app/dashboard/page.jsx
-// ───────────────────────────────────────────────
-// Root dashboard landing page
-// ───────────────────────────────────────────────
-
 "use client";
-
-import React from "react";
+import Link from "next/link";
 
 export default function DashboardPage() {
   return (
-    <section className="p-6">
-      <h1 className="text-3xl font-bold mb-4">Dashboard Overview</h1>
-      <p className="text-gray-700 leading-relaxed">
-        Welcome to the OAS Dashboard. Use the sidebar to navigate through
-        <strong> Clients</strong>, <strong>Reports</strong>, and
-        <strong> Maintenance</strong> modules.
-      </p>
-    </section>
+    <div className="grid grid-cols-2 gap-6">
+      <Link href="/dashboard/clients" className="p-6 bg-blue-100 rounded-xl hover:bg-blue-200 transition">
+        <h2 className="text-xl font-semibold mb-1">Clients</h2>
+        <p className="text-gray-600">Manage residents and admissions</p>
+      </Link>
+
+      <Link href="/dashboard/maintenance" className="p-6 bg-yellow-100 rounded-xl hover:bg-yellow-200 transition">
+        <h2 className="text-xl font-semibold mb-1">Maintenance</h2>
+        <p className="text-gray-600">Track maintenance requests</p>
+      </Link>
+
+      <Link href="/dashboard/reports" className="p-6 bg-green-100 rounded-xl hover:bg-green-200 transition">
+        <h2 className="text-xl font-semibold mb-1">Reports</h2>
+        <p className="text-gray-600">View and submit staff reports</p>
+      </Link>
+
+      <Link href="/dashboard/census" className="p-6 bg-purple-100 rounded-xl hover:bg-purple-200 transition">
+        <h2 className="text-xl font-semibold mb-1">Census</h2>
+        <p className="text-gray-600">Track occupancy and counts</p>
+      </Link>
+    </div>
   );
 }
