@@ -1,33 +1,43 @@
-"use client";
-import { useEffect, useState } from "react";
-import { createClient } from "@/lib/supabaseClient";
+'use client'
+
+import { useEffect, useState } from 'react'
+import { supabase } from '@/lib/supabaseClient'
 
 export default function ReportsPage() {
-  const supabase = createClient();
-  const [reports, setReports] = useState([]);
+  const [reports, setReports] = useState([])
 
   useEffect(() => {
     async function fetchReports() {
-      const { data, error } = await supabase.from("shift_logs").select("*").order("created_at", { ascending: false });
-      if (!error) setReports(data || []);
+      const { data, error } = await supabase
+        .from('reports')
+        .select('*')
+        .order('created_at', { ascending: false })
+      if (!error) setReports(data || [])
     }
-    fetchReports();
-  }, [supabase]);
+    fetchReports()
+  }, [])
 
   return (
-    <div>
-      <h2 className="text-2xl font-semibold mb-4">Shift Reports</h2>
-      {reports.length === 0 ? (
-        <p className="text-gray-500">No reports logged yet.</p>
-      ) : (
-        <ul className="divide-y divide-gray-200">
+    <div className="p-6">
+      <h2 className="text-xl font-semibold mb-4">Reports</h2>
+      <table className="w-full border-collapse border border-gray-300">
+        <thead>
+          <tr className="bg-gray-100">
+            <th className="border p-2">Date</th>
+            <th className="border p-2">Title</th>
+            <th className="border p-2">Submitted By</th>
+          </tr>
+        </thead>
+        <tbody>
           {reports.map((r) => (
-            <li key={r.id} className="py-2">
-              <strong>{r.resident_id}</strong> — {r.behavior_notes || "No notes"}
-            </li>
+            <tr key={r.id}>
+              <td className="border p-2">{new Date(r.created_at).toLocaleString()}</td>
+              <td className="border p-2">{r.title}</td>
+              <td className="border p-2">{r.staff_id}</td>
+            </tr>
           ))}
-        </ul>
-      )}
+        </tbody>
+      </table>
     </div>
-  );
+  )
 }

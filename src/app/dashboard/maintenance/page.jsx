@@ -1,33 +1,43 @@
-"use client";
-import { useEffect, useState } from "react";
-import { createClient } from "@/lib/supabaseClient";
+'use client'
+
+import { useEffect, useState } from 'react'
+import { supabase } from '@/lib/supabaseClient'
 
 export default function MaintenancePage() {
-  const supabase = createClient();
-  const [tickets, setTickets] = useState([]);
+  const [requests, setRequests] = useState([])
 
   useEffect(() => {
-    async function fetchTickets() {
-      const { data, error } = await supabase.from("maintenance").select("*").order("created_at", { ascending: false });
-      if (!error) setTickets(data || []);
+    async function fetchRequests() {
+      const { data, error } = await supabase
+        .from('maintenance')
+        .select('*')
+        .order('created_at', { ascending: false })
+      if (!error) setRequests(data || [])
     }
-    fetchTickets();
-  }, [supabase]);
+    fetchRequests()
+  }, [])
 
   return (
-    <div>
-      <h2 className="text-2xl font-semibold mb-4">Maintenance Requests</h2>
-      {tickets.length === 0 ? (
-        <p className="text-gray-500">No open maintenance requests.</p>
-      ) : (
-        <ul className="divide-y divide-gray-200">
-          {tickets.map((t) => (
-            <li key={t.id} className="py-2">
-              <strong>{t.issue}</strong> — {t.status} ({t.priority})
-            </li>
+    <div className="p-6">
+      <h2 className="text-xl font-semibold mb-4">Maintenance Requests</h2>
+      <table className="w-full border-collapse border border-gray-300">
+        <thead>
+          <tr className="bg-gray-100">
+            <th className="border p-2">Date</th>
+            <th className="border p-2">Request</th>
+            <th className="border p-2">Status</th>
+          </tr>
+        </thead>
+        <tbody>
+          {requests.map((r) => (
+            <tr key={r.id}>
+              <td className="border p-2">{new Date(r.created_at).toLocaleString()}</td>
+              <td className="border p-2">{r.description}</td>
+              <td className="border p-2">{r.status}</td>
+            </tr>
           ))}
-        </ul>
-      )}
+        </tbody>
+      </table>
     </div>
-  );
+  )
 }
