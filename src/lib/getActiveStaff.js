@@ -1,51 +1,18 @@
-'use client'
+export function getActiveStaff() {
+  if (typeof window !== 'undefined' && window.localStorage) {
+    const staffId = localStorage.getItem('staff_session_id')
+    const staffName = localStorage.getItem('staff_name')
+    const staffRole = localStorage.getItem('staff_role')
 
-import { createClient } from '@supabase/supabase-js'
-
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-)
-
-// Save staff session to localStorage (for PIN logins)
-export function saveStaffSession(sessionId) {
-  localStorage.setItem('staff_session_id', sessionId)
-  localStorage.setItem('staff_session_time', Date.now().toString())
-}
-
-// Get active staff (for both admin and PIN logins)
-export async function getActiveStaff() {
-  try {
-    // Step 1: Supabase Auth (Admin)
-    const { data: { user } } = await supabase.auth.getUser()
-    if (user && user.email) {
+    if (staffId && staffName) {
       return {
-        name: user.email,
-        role: 'Admin',
-        session_type: 'supabase',
+        id: staffId,
+        name: staffName,
+        role: staffRole || 'Staff',
       }
     }
-
-    // Step 2: Local PIN session
-    const sessionId = localStorage.getItem('staff_session_id')
-    if (!sessionId) return null
-
-    const { data, error } = await supabase
-      .from('staff_sessions')
-      .select('*, staff:staff_id ( name, role )')
-      .eq('id', sessionId)
-      .single()
-
-    if (error || !data) return null
-
-    return {
-      name: data.staff.name,
-      role: data.staff.role,
-      session_type: 'pin',
-      session_id: sessionId,
-    }
-  } catch (err) {
-    console.error('Error fetching active staff:', err)
-    return null
   }
+
+  // Fallback if not in browser or no session
+  return null
 }

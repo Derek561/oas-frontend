@@ -1,13 +1,14 @@
 import { createClient } from '@supabase/supabase-js'
 
+// Environment variables from Netlify/Next.js
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
 
-// Prevent Netlify server runtime from crashing by checking for 'window'
+// Safe Supabase instance creation
 let supabase
 
 if (typeof window !== 'undefined') {
-  // Browser environment: normal Supabase client
+  // ✅ Browser environment (has localStorage)
   supabase = createClient(supabaseUrl, supabaseAnonKey, {
     auth: {
       persistSession: true,
@@ -15,7 +16,7 @@ if (typeof window !== 'undefined') {
     },
   })
 } else {
-  // Server environment (Netlify, SSR)
+  // 🧠 Serverless (Netlify) environment — no localStorage
   supabase = createClient(supabaseUrl, supabaseAnonKey, {
     auth: {
       persistSession: false,
