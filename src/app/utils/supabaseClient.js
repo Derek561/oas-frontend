@@ -1,14 +1,27 @@
-import { createClient } from '@supabase/supabase-js';
+import { createClient } from '@supabase/supabase-js'
 
-// ✅ Load from environment variables (set in Netlify)
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+// Environment variables from Netlify/Next.js
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
 
-// 🧠 Basic safety check
-if (!supabaseUrl || !supabaseAnonKey) {
-  console.error('❌ Missing Supabase environment variables.');
-  throw new Error('Supabase URL or Anon Key not found in environment variables.');
+// Safe Supabase instance creation
+let supabase
+
+if (typeof window !== 'undefined') {
+  // ✅ Browser environment (has localStorage)
+  supabase = createClient(supabaseUrl, supabaseAnonKey, {
+    auth: {
+      persistSession: true,
+      storage: window.localStorage,
+    },
+  })
+} else {
+  // 🧠 Serverless (Netlify) environment — no localStorage
+  supabase = createClient(supabaseUrl, supabaseAnonKey, {
+    auth: {
+      persistSession: false,
+    },
+  })
 }
 
-// ✅ Create Supabase client
-export const supabase = createClient(supabaseUrl, supabaseAnonKey);
+export { supabase }
