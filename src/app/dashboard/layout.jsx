@@ -11,25 +11,27 @@ export default function DashboardLayout({ children }) {
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    async function checkSession() {
-      try {
-        const activeStaff = await getActiveStaff()
-        if (!activeStaff) {
-          console.warn('No active session found. Redirecting to login...')
-          router.push('/login')
-          return
-        }
-        setStaff(activeStaff)
-      } catch (err) {
-        console.error('Error checking session:', err)
-        router.push('/login')
-      } finally {
-        setLoading(false)
-      }
+    // Validate local session and redirect if missing
+    const activeStaff = getActiveStaff()
+    if (!activeStaff) {
+      console.warn('No active session found. Redirecting to login...')
+      router.push('/login')
+      return
     }
-
-    checkSession()
+    setStaff(activeStaff)
+    setLoading(false)
   }, [router])
+
+  // Unified logout handler
+  async function handleLogout() {
+    try {
+      await logoutStaff()
+      router.push('/login')
+    } catch (error) {
+      console.error('Logout failed:', error)
+      router.push('/login')
+    }
+  }
 
   if (loading) {
     return (
@@ -41,37 +43,30 @@ export default function DashboardLayout({ children }) {
 
   if (!staff) {
     return (
-      <div className="flex items-center justify-center min-h-screen text-gray-600">
-        Session expired or not found. <br />
-        <button
-          onClick={() => router.push('/login')}
-          className="mt-2 bg-blue-600 text-white px-4 py-2 rounded-md"
-        >
-          Return to Login
-        </button>
+      <div className="flex items-center justify-center min-h-screen text-gray-600 text-center">
+        Session expired or not found.
+        <div className="mt-4">
+          <button
+            onClick={() => router.push('/login')}
+            className="bg-blue-600 text-white px-4 py-2 rounded-md"
+          >
+            Return to Login
+          </button>
+        </div>
       </div>
     )
   }
 
-  // Unified logout for both Supabase Auth and PIN
-  async function handleLogout() {
-    if (staff.session_type === 'supabase') {
-      await logoutStaff('supabase')
-    } else {
-      await logoutStaff('pin')
-    }
-    router.push('/login')
-  }
-
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col">
+      {/* Top Navigation */}
       <header className="flex justify-between items-center bg-white shadow p-4">
         <h1 className="text-lg font-semibold text-gray-800">
           Oceanside Housing Dashboard
         </h1>
         <div className="flex items-center space-x-3">
           <span className="text-gray-700 text-sm">
-            {staff.name} ({staff.role})
+            {staff.name || 'Staff'} ({staff.role || 'User'})
           </span>
           <button
             onClick={handleLogout}
@@ -82,6 +77,7 @@ export default function DashboardLayout({ children }) {
         </div>
       </header>
 
+      {/* Page Body */}
       <main className="flex-1 p-6">{children}</main>
     </div>
   )

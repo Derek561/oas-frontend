@@ -1,47 +1,54 @@
-'use client'
+"use client";
 
-import { useEffect, useState } from 'react'
-import { supabase } from '@/lib/supabaseClient'
-import { addAuditLog } from '@/lib/addAuditLog'
-import { addDischarge } from '@/lib/addDischarge'
+import { useEffect, useState } from "react";
+import { createClient } from "@supabase/supabase-js";
+
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL,
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+);
 
 export default function DischargesPage() {
-  const [client_id, setClientId] = useState('')
-  const [reason, setReason] = useState('')
-  const [notes, setNotes] = useState('')
-  const [discharges, setDischarges] = useState([])
+  const [client_id, setClientId] = useState("");
+  const [reason, setReason] = useState("");
+  const [notes, setNotes] = useState("");
+  const [discharges, setDischarges] = useState([]);
+
+  // 🔹 Load list
+  const fetchDischarges = async () => {
+    const { data, error } = await supabase
+      .from("discharges")
+      .select("*")
+      .order("created_at", { ascending: false });
+    if (!error) setDischarges(data || []);
+  };
 
   useEffect(() => {
-    async function fetchDischarges() {
-      const { data, error } = await supabase
-        .from('discharges')
-        .select('*')
-        .order('created_at', { ascending: false })
-      if (!error) setDischarges(data || [])
-    }
-    fetchDischarges()
-  }, [])
+    fetchDischarges();
+  }, []);
 
-  async function handleAddDischarge(e) {
-    e.preventDefault()
-    const user = supabase.auth.getUser()
-    if (!user) {
-      alert('You must be logged in to record a discharge.')
-      return
-    }
+  // 🔹 Insert
+  const handleAddDischarge = async (e) => {
+    e.preventDefault();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return alert("Login required.");
 
-    try {
-      await addDischarge({ client_id, reason, notes })
-      await addAuditLog('Discharge Added', `Client ${client_id}`, user.id)
-      alert('Discharge recorded successfully.')
-      setClientId('')
-      setReason('')
-      setNotes('')
-    } catch (err) {
-      console.error(err)
-      alert('Error recording discharge.')
+    const { error } = await supabase
+      .from("discharges")
+      .insert([{ client_id, reason, notes }])
+      .select();
+
+    if (error) {
+      console.error(error);
+      alert("Error saving discharge");
+    } else {
+      alert("✅ Discharge saved");
+      setClientId("");
+      setReason("");
+      setNotes("");
+      fetchDischarges();
     }
-  }
+  };
 
   return (
     <div className="p-6">
@@ -49,50 +56,53 @@ export default function DischargesPage() {
 
       <form onSubmit={handleAddDischarge} className="space-y-2 mb-6">
         <input
-          type="text"
+          className="border p-2 w-full rounded"
           placeholder="Client ID"
           value={client_id}
           onChange={(e) => setClientId(e.target.value)}
-          className="border p-2 w-full rounded"
         />
         <input
-          type="text"
+          className="border p-2 w-full rounded"
           placeholder="Reason for Discharge"
           value={reason}
           onChange={(e) => setReason(e.target.value)}
-          className="border p-2 w-full rounded"
         />
         <textarea
+          className="border p-2 w-full rounded"
           placeholder="Notes"
           value={notes}
           onChange={(e) => setNotes(e.target.value)}
-          className="border p-2 w-full rounded"
         />
-        <button type="submit" className="bg-blue-500 text-white p-2 rounded">
+        <button
+          type="submit"
+          className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700"
+        >
           Add Discharge
         </button>
       </form>
 
-      <table className="w-full border-collapse border border-gray-300">
-        <thead>
-          <tr className="bg-gray-100">
-            <th className="border p-2">Date</th>
-            <th className="border p-2">Client ID</th>
-            <th className="border p-2">Reason</th>
-            <th className="border p-2">Notes</th>
+      <table className="w-full border border-gray-200 text-left">
+        <thead className="bg-gray-100">
+          <tr>
+            <th className="p-2 border-b">Date</th>
+            <th className="p-2 border-b">Client ID</th>
+            <th className="p-2 border-b">Reason</th>
+            <th className="p-2 border-b">Notes</th>
           </tr>
         </thead>
         <tbody>
           {discharges.map((d) => (
             <tr key={d.id}>
-              <td className="border p-2">{new Date(d.created_at).toLocaleString()}</td>
-              <td className="border p-2">{d.client_id}</td>
-              <td className="border p-2">{d.reason}</td>
-              <td className="border p-2">{d.notes}</td>
+              <td className="p-2 border-b">
+                {new Date(d.created_at).toLocaleString()}
+              </td>
+              <td className="p-2 border-b">{d.client_id}</td>
+              <td className="p-2 border-b">{d.reason}</td>
+              <td className="p-2 border-b">{d.notes}</td>
             </tr>
           ))}
         </tbody>
       </table>
     </div>
-  )
+  );
 }

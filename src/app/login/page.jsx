@@ -1,85 +1,129 @@
 'use client'
 
-import { useState } from 'react'
-import { createClient } from '@supabase/supabase-js'
-import { saveStaffSession } from '@/lib/getActiveStaff'
-
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-)
+import { useEffect, useState } from 'react'
+import { supabase } from '@/lib/supabaseClient'
+import { getActiveStaff, saveStaffSession } from '@/lib/getActiveStaff'
+import { useRouter } from 'next/navigation'
 
 export default function LoginPage() {
+  const router = useRouter()
+  const [mode, setMode] = useState('pin') // 'pin' or 'admin'
+  const [pin, setPin] = useState('')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
-  const [pin, setPin] = useState('')
-  const [mode, setMode] = useState('pin')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
 
+  // Auto-redirect if session already exists
+  useEffect(() => {
+    const staff = getActiveStaff()
+    if (staff) router.push('/dashboard')
+  }, [router])
+
+  // 🔐 Admin Login
   async function handleAdminLogin(e) {
     e.preventDefault()
+    setError('')
     setLoading(true)
-    const { data, error } = await supabase.auth.signInWithPassword({ email, password })
+
+    const { data, error } = await supabase.auth.signInWithPassword({
+      email,
+      password,
+    })
+
     setLoading(false)
     if (error) return setError(error.message)
-    window.location.href = '/dashboard'
+
+    // Save Admin session locally
+    saveStaffSession({
+      id: data.user?.id,
+      name: data.user?.email || 'Admin',
+      role: 'Admin',
+    })
+
+    router.push('/dashboard')
   }
 
+  // 👷 Staff PIN Login
   async function handleStaffLogin(e) {
     e.preventDefault()
-    setLoading(true)
     setError('')
+    setLoading(true)
 
-    const { data, error } = await supabase
+    // Validate PIN against staff table
+    const { data: staff, error } = await supabase
       .from('staff')
-      .select('id')
+      .select('*')
       .eq('pin_code', pin)
       .single()
 
-    if (error || !data) {
-      setLoading(false)
-      return setError('Invalid PIN')
+    setLoading(false)
+
+    if (error || !staff) {
+      console.warn('Invalid PIN:', error)
+      return setError('Invalid PIN. Please try again.')
     }
 
-    const { data: session, error: sessionError } = await supabase
-      .from('staff_sessions')
-      .insert({ staff_id: data.id })
-      .select('id')
-      .single()
+    // Save Staff session locally
+    saveStaffSession({
+      id: staff.id,
+      name: staff.name || staff.email || 'Staff',
+      role: staff.role || 'Staff',
+    })
 
-    if (sessionError) {
-      setLoading(false)
-      return setError('Could not start session')
-    }
-
-    saveStaffSession(session.id)
-    window.location.href = '/dashboard'
+    router.push('/dashboard')
   }
 
   return (
     <div className="min-h-screen flex flex-col items-center justify-center bg-gray-50">
       <div className="bg-white shadow-lg rounded-xl p-8 w-full max-w-sm">
-        <h1 className="text-2xl font-semibold mb-4 text-center text-gray-800">
+        <h1 className="text-2xl font-semibold mb-6 text-center text-gray-800">
           Oceanside Housing Login
         </h1>
 
+        {/* Tabs */}
         <div className="flex justify-center mb-6">
           <button
-            className={`px-4 py-2 rounded-l ${mode === 'pin' ? 'bg-blue-500 text-white' : 'bg-gray-200'}`}
             onClick={() => setMode('pin')}
+            className={`px-4 py-2 rounded-l ${mode === 'pin'
+              ? 'bg-blue-600 text-white'
+              : 'bg-gray-200 text-gray-700'
+            }`}
           >
             Staff (PIN)
           </button>
           <button
-            className={`px-4 py-2 rounded-r ${mode === 'admin' ? 'bg-blue-500 text-white' : 'bg-gray-200'}`}
             onClick={() => setMode('admin')}
+            className={`px-4 py-2 rounded-r ${mode === 'admin'
+              ? 'bg-blue-600 text-white'
+              : 'bg-gray-200 text-gray-700'
+            }`}
           >
             Admin
           </button>
         </div>
 
-        {mode === 'admin' ? (
+        {/* PIN Login Form */}
+        {mode === 'pin' ? (
+          <form onSubmit={handleStaffLogin} className="space-y-4">
+            <input
+              type="password"
+              value={pin}
+              onChange={(e) => setPin(e.target.value)}
+              placeholder="Enter PIN"
+              className="w-full border rounded p-2"
+              required
+            />
+            <button
+              type="submit"
+              disabled={loading}
+              className="w-full bg-blue-600 text-white py-2 rounded hover:bg-blue-700"
+            >
+              {loading ? 'Verifying...' : 'Login with PIN'}
+            </button>
+          </form>
+        ) : (
+          // Admin Email Login Form
           <form onSubmit={handleAdminLogin} className="space-y-4">
             <input
               type="email"
@@ -103,24 +147,6 @@ export default function LoginPage() {
               className="w-full bg-blue-600 text-white py-2 rounded hover:bg-blue-700"
             >
               {loading ? 'Logging in...' : 'Login'}
-            </button>
-          </form>
-        ) : (
-          <form onSubmit={handleStaffLogin} className="space-y-4">
-            <input
-              type="password"
-              value={pin}
-              onChange={(e) => setPin(e.target.value)}
-              placeholder="Enter PIN"
-              className="w-full border rounded p-2"
-              required
-            />
-            <button
-              type="submit"
-              disabled={loading}
-              className="w-full bg-blue-600 text-white py-2 rounded hover:bg-blue-700"
-            >
-              {loading ? 'Verifying...' : 'Login with PIN'}
             </button>
           </form>
         )}
