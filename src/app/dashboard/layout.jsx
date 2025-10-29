@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { getActiveStaff } from '@/lib/getActiveStaff'
 import { logoutStaff } from '@/lib/logoutStaff'
@@ -76,6 +77,29 @@ export default function DashboardLayout({ children }) {
           </button>
         </div>
       </header>
+
+      {/* 👇 ADD THIS NEW NAVIGATION BAR BELOW THE HEADER 👇 */}
+      <nav className="flex flex-wrap gap-4 text-sm font-medium text-gray-700 bg-gray-100 px-6 py-3 shadow-inner">
+        <Link href="/dashboard/residents" className="hover:text-blue-600">
+          Residents
+        </Link>
+        <Link href="/dashboard/maintenance" className="hover:text-blue-600">
+          Maintenance
+        </Link>
+        <Link href="/dashboard/turnover" className="hover:text-blue-600">
+          Shift Turnover
+        </Link>
+        <Link href="/dashboard/observation" className="hover:text-blue-600">
+          Observation Notes
+        </Link>
+        <Link href="/dashboard/census" className="hover:text-blue-600">
+          Census
+        </Link>
+        <Link href="/dashboard/audit" className="hover:text-blue-600">
+          Audit
+        </Link>
+      </nav>
+      {/* 👆 END NAVIGATION BAR 👆 */}
 
       {/* Page Body */}
       <main className="flex-1 p-6">{children}</main>

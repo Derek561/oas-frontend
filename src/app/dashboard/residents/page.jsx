@@ -1,5 +1,4 @@
 'use client'
-
 import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '@/lib/supabaseClient'
 
@@ -12,6 +11,7 @@ export default function ResidentsPage() {
   const [firstName, setFirstName] = useState('')
   const [lastName, setLastName] = useState('')
   const [status, setStatus] = useState('Active')
+  const [clinicalStatus, setClinicalStatus] = useState('Active')
   const [admissionDate, setAdmissionDate] = useState('')
   const [selectedHouse, setSelectedHouse] = useState('')
   const [selectedRoom, setSelectedRoom] = useState('')
@@ -29,7 +29,7 @@ export default function ResidentsPage() {
     fetchResidents()
   }, [])
 
-  // Fetch houses
+  // --- Fetch Houses ---
   async function fetchHouses() {
     const { data, error } = await supabase
       .from('houses')
@@ -39,7 +39,7 @@ export default function ResidentsPage() {
     else setHouses(data || [])
   }
 
-  // Fetch rooms
+  // --- Fetch Rooms ---
   async function fetchRooms() {
     const { data, error } = await supabase
       .from('rooms')
@@ -49,7 +49,7 @@ export default function ResidentsPage() {
     else setRooms(data || [])
   }
 
-  // ✅ Fetch residents (with correct foreign key joins)
+  // --- Fetch Residents ---
   async function fetchResidents() {
     const { data, error } = await supabase
       .from('residents')
@@ -58,6 +58,7 @@ export default function ResidentsPage() {
         first_name,
         last_name,
         status,
+        clinical_status,
         admission_date,
         discharge_date,
         houses!residents_house_fk (
@@ -71,15 +72,22 @@ export default function ResidentsPage() {
         )
       `)
       .order('admission_date', { ascending: false })
+    if (error) console.error('Error fetching residents:', error)
+    else setResidents(data || [])
+  }
 
-    if (error) {
-      console.error('Error fetching residents:', error)
-    } else {
-      setResidents(data || [])
+  // --- Census Auto-Refresh Helper ---
+  async function updateCensusForHouse() {
+    try {
+      const { error } = await supabase.rpc('refresh_census')
+      if (error) throw error
+      console.log('✅ Census auto-refresh complete')
+    } catch (error) {
+      console.error('❌ Census refresh failed:', error)
     }
   }
 
-  // ✅ Add resident
+  // --- Add Resident ---
   async function handleAddResident(e) {
     e.preventDefault()
 
@@ -92,14 +100,17 @@ export default function ResidentsPage() {
       return
     }
 
-    const { error } = await supabase.from('residents').insert({
-      first_name: firstName.trim(),
-      last_name: lastName.trim(),
-      status,
-      admission_date: admissionDate || null,
-      house_id: selectedHouse,
-      room_id: selectedRoom || null,
-    })
+    const { error } = await supabase.from('residents').insert([
+      {
+        first_name: firstName,
+        last_name: lastName,
+        status: 'Active',
+        admission_date: admissionDate || new Date().toISOString().split('T')[0],
+        discharge_date: null,
+        house_id: selectedHouse,
+        room_id: selectedRoom || null,
+      },
+    ])
 
     if (error) {
       console.error('Error adding resident:', error)
@@ -115,9 +126,10 @@ export default function ResidentsPage() {
     setSelectedHouse('')
     setSelectedRoom('')
     fetchResidents()
+    await updateCensusForHouse()
   }
 
-  // ✅ Delete resident
+  // --- Delete Resident ---
   async function handleDeleteResident(id) {
     if (!confirm('Are you sure you want to delete this resident?')) return
     const { error } = await supabase.from('residents').delete().eq('id', id)
@@ -127,9 +139,50 @@ export default function ResidentsPage() {
       return
     }
     fetchResidents()
+    await updateCensusForHouse()
   }
 
-  // ✅ Render UI
+  // --- Discharge Resident ---
+  async function handleDischargeResident(id) {
+  if (!id) {
+    console.error("Discharge failed: Resident ID is missing");
+    alert("Error: Resident ID not found.");
+    return;
+  }
+
+  if (!confirm("Mark this resident as discharged?")) return;
+
+  const today = new Date().toISOString().split("T")[0];
+
+  const { error } = await supabase
+    .from("residents")
+    .update({
+      status: "Discharged",
+      discharge_date: today,
+    })
+    .eq("id", id); // critical WHERE clause
+
+  if (error) {
+    console.error("Error discharging resident:", JSON.stringify(error, null, 2));
+    alert(`Error updating resident: ${error.message || "Unknown error"}`);
+    return;
+  }
+
+  console.log(`✅ Resident ${id} discharged successfully on ${today}`);
+
+  // Trigger census auto-refresh
+  try {
+    const { error: censusError } = await supabase.rpc("refresh_census");
+    if (censusError) throw censusError;
+    console.log("✅ Census auto-refresh complete");
+  } catch (err) {
+    console.error("❌ Census refresh failed:", err);
+  }
+
+  fetchResidents(); // Refresh UI
+}
+
+  // --- Render UI ---
   return (
     <div className="p-6">
       <h2 className="text-xl font-semibold mb-4">Residents</h2>
@@ -147,7 +200,6 @@ export default function ResidentsPage() {
           className="border p-2 rounded"
           required
         />
-
         <input
           type="text"
           placeholder="Last name"
@@ -156,7 +208,6 @@ export default function ResidentsPage() {
           className="border p-2 rounded"
           required
         />
-
         <select
           value={status}
           onChange={(e) => setStatus(e.target.value)}
@@ -166,14 +217,12 @@ export default function ResidentsPage() {
           <option>Inactive</option>
           <option>Pending</option>
         </select>
-
         <input
           type="date"
           value={admissionDate}
           onChange={(e) => setAdmissionDate(e.target.value)}
           className="border p-2 rounded"
         />
-
         <select
           value={selectedHouse}
           onChange={(e) => {
@@ -189,7 +238,6 @@ export default function ResidentsPage() {
             </option>
           ))}
         </select>
-
         <select
           value={selectedRoom}
           onChange={(e) => setSelectedRoom(e.target.value)}
@@ -203,7 +251,6 @@ export default function ResidentsPage() {
             </option>
           ))}
         </select>
-
         <div className="md:col-span-6">
           <button
             type="submit"
@@ -214,7 +261,7 @@ export default function ResidentsPage() {
         </div>
       </form>
 
-      {/* Resident List */}
+      {/* Residents Table */}
       <table className="w-full border-collapse border border-gray-300">
         <thead>
           <tr className="bg-gray-100">
@@ -222,40 +269,66 @@ export default function ResidentsPage() {
             <th className="border p-2 text-left">House</th>
             <th className="border p-2 text-left">Room</th>
             <th className="border p-2 text-left">Status</th>
+            <th className="border p-2 text-left">Clinical Status</th>
             <th className="border p-2 text-left">Admission</th>
             <th className="border p-2 text-center">Actions</th>
           </tr>
         </thead>
         <tbody>
           {residents.map((r) => (
-            <tr key={r.id}>
+            <tr key={r.id} className="border-t">
               <td className="border p-2">
                 {r.first_name} {r.last_name}
               </td>
-              <td className="border p-2">{r.houses?.name ?? '—'}</td>
-              <td className="border p-2">{r.rooms?.room_number ?? '—'}</td>
-              <td className="border p-2">{r.status}</td>
-              <td className="border p-2">{r.admission_date ?? '—'}</td>
-              <td className="border p-2 text-center">
+              <td className="border p-2">{r.houses?.name || '—'}</td>
+              <td className="border p-2">{r.rooms?.room_number || '—'}</td>
+              <td className="border p-2">
+                <span
+                  className={`px-2 py-1 rounded-full text-xs font-semibold ${
+                    r.status === 'Active'
+                      ? 'bg-green-100 text-green-700'
+                      : r.status === 'Discharged'
+                      ? 'bg-red-100 text-red-700'
+                      : 'bg-gray-100 text-gray-600'
+                  }`}
+                >
+                  {r.status || 'Unknown'}
+                </span>
+              </td>
+              <td className="border p-2">
+                <span
+                  className={`px-2 py-1 rounded-full text-xs font-semibold ${
+                    r.clinical_status === 'Active'
+                      ? 'bg-green-100 text-green-800'
+                      : r.clinical_status === 'Clinical Hold'
+                      ? 'bg-yellow-100 text-yellow-800'
+                      : r.clinical_status === 'Non-Clinical'
+                      ? 'bg-blue-100 text-blue-800'
+                      : r.clinical_status === 'Discharged'
+                      ? 'bg-gray-200 text-gray-700'
+                      : 'bg-slate-100 text-slate-700'
+                  }`}
+                >
+                  {r.clinical_status || '—'}
+                </span>
+              </td>
+              <td className="border p-2">{r.admission_date || '—'}</td>
+              <td className="border p-2 text-center space-x-3">
+                <button
+                  onClick={() => handleDischargeResident(r.id)}
+                  className="text-blue-600 hover:underline"
+                >
+                  Discharge
+                </button>
                 <button
                   onClick={() => handleDeleteResident(r.id)}
-                  className="bg-red-500 text-white px-3 py-1 rounded"
+                  className="text-red-600 hover:underline"
                 >
                   Delete
                 </button>
               </td>
             </tr>
           ))}
-          {residents.length === 0 && (
-            <tr>
-              <td
-                className="border p-2 text-center text-gray-500"
-                colSpan={6}
-              >
-                No residents yet.
-              </td>
-            </tr>
-          )}
         </tbody>
       </table>
     </div>
