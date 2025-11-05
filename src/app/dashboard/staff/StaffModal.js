@@ -10,20 +10,17 @@ export default function StaffModal({ staff, onClose, onSaved }) {
     email: staff?.email || '',
   })
 
-  // 🔹 Input change handler
+  // 🔹 Handle input changes
   function handleChange(e) {
     const { name, value } = e.target
     setFormData((prev) => ({ ...prev, [name]: value }))
   }
 
-  // 🔹 Save or update staff record
+  // 🔹 Save or update staff
   async function handleSubmit(e) {
     e.preventDefault()
 
     try {
-      // ✅ Get the current logged-in user
-      const { data: { user } } = await supabase.auth.getUser()
-
       let data, error
 
       if (staff?.id) {
@@ -47,14 +44,14 @@ export default function StaffModal({ staff, onClose, onSaved }) {
               name: formData.name,
               role: formData.role,
               email: formData.email,
-              user_id: user?.id || null,
+              created_at: new Date(),
+              updated_at: new Date(),
             },
           ])
           .select())
       }
 
       console.log('Insert/Update result:', { data, error })
-
       if (error) throw error
 
       alert(`Staff member ${staff?.id ? 'updated' : 'added'} successfully.`)
