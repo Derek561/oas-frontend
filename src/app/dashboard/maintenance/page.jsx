@@ -1,273 +1,307 @@
-'use client'
+"use client";
 
-import { useEffect, useState } from 'react'
-import { supabase } from '@/lib/supabaseClient'
-import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card'
+import { useEffect, useMemo, useState } from "react";
+import { supabase } from "@/lib/supabaseClient";
+import {
+  Card,
+  CardHeader,
+  CardContent,
+  CardTitle,
+} from "@/components/ui/card";
+import {
+  Table,
+  TableHeader,
+  TableHead,
+  TableRow,
+  TableBody,
+  TableCell,
+} from "@/components/ui/table";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+
+/**
+ * Maintenance Dashboard (Stable, Supabase-aligned)
+ * - Inserts issues using valid FK (submitted_by → staff.id)
+ * - Joins staff.name for Submitted By column
+ * - Admin role lock for delete
+ * - MVP mode: house_id + assigned_to remain null
+ */
 
 export default function MaintenancePage() {
-  const [maintenance, setMaintenance] = useState([])
-  const [houses, setHouses] = useState([])
-  const [staffList, setStaffList] = useState([])
-  const [issue, setIssue] = useState('')
-  const [priority, setPriority] = useState('Medium')
-  const [assignedTo, setAssignedTo] = useState('')
-  const [currentHouse, setCurrentHouse] = useState('')
-  const [userRole, setUserRole] = useState('')
+  const [issues, setIssues] = useState([]);
+  const [userName, setUserName] = useState("—");
+  const [userRole, setUserRole] = useState("Admin"); // fallback for now
+  const [staffId, setStaffId] = useState(null);
 
+  // form state
+  const [issueText, setIssueText] = useState("");
+  const [priority, setPriority] = useState("Medium");
+  const [location, setLocation] = useState("");
+  const [statusFilter, setStatusFilter] = useState("All");
+
+  // Load current user + staff match
   useEffect(() => {
-    getUserContext()
-    fetchHouses()
-  }, [])
+    (async () => {
+      const { data: auth } = await supabase.auth.getUser();
+      const email = auth?.user?.email || null;
 
-  // -------------------------
-  //  USER CONTEXT
-  // -------------------------
-  async function getUserContext() {
-    try {
-      const {
-        data: { user },
-        error: userError,
-      } = await supabase.auth.getUser()
+      if (!email) return;
 
-      if (userError || !user) {
-        console.warn('⚠️ No authenticated user found.')
-        return
+      // find the staff entry for this email
+      const { data: staffRow, error } = await supabase
+        .from("staff")
+        .select("id, name, role, active")
+        .eq("email", email)
+        .eq("active", true)
+        .maybeSingle();
+
+      if (error) console.error("Staff lookup error:", error.message);
+      if (staffRow) {
+        setUserName(staffRow.name || email);
+        setUserRole(staffRow.role || "Staff");
+        setStaffId(staffRow.id);
+      } else {
+        // no staff record found — still allow logging issue
+        setUserName(email);
+        setStaffId(null);
       }
+    })();
+  }, []);
 
-      const { data: staff, error: staffError } = await supabase
-        .from('staff')
-        .select('id, role, name, email')
-        .eq('email', user.email)
-        .maybeSingle()
+  // Fetch issues on load
+  useEffect(() => {
+    fetchIssues();
+  }, []);
 
-      if (staffError) console.warn('Staff fetch error:', staffError.message)
-      if (!staff) {
-        console.warn(`⚠️ No staff record found for ${user.email}`)
-        setUserRole('admin')
-        fetchMaintenance(null, 'admin')
-        return
-      }
-
-      setUserRole(staff.role)
-
-      const { data: pin } = await supabase
-        .from('staff_pins')
-        .select('house_id, houses(name)')
-        .eq('staff_id', staff.id)
-        .maybeSingle()
-
-      if (pin?.houses?.name) setCurrentHouse(pin.houses.name)
-      fetchMaintenance(pin?.house_id || null, staff.role)
-      fetchStaffList()
-    } catch (err) {
-      console.error('Error loading user context:', err.message)
-    }
-  }
-
-  // -------------------------
-  //  FETCH DATA
-  // -------------------------
-  async function fetchHouses() {
-    const { data, error } = await supabase.from('houses').select('id, name')
-    if (!error) setHouses(data)
-  }
-
-  async function fetchStaffList() {
+  async function fetchIssues() {
     const { data, error } = await supabase
-      .from('staff')
-      .select('id, name, role, email')
-      .eq('active', true)
-    if (!error) setStaffList(data)
-  }
-
-  // ✅ Fetch from view (not joined table)
-  async function fetchMaintenance(houseId = null, role = '') {
-    try {
-      let query = supabase
-        .from('v_maintenance_list')
-        .select('*')
-        .order('created_at', { ascending: false })
-
-      if (houseId && role !== 'admin') {
-        query = query.eq('house_id', houseId)
-      }
-
-      const { data, error } = await query
-      if (error) throw error
-      setMaintenance(data || [])
-    } catch (err) {
-      console.error('Fetch maintenance failed:', err.message)
-    }
-  }
-
-  // -------------------------
-  //  ACTIONS
-  // -------------------------
-  async function handleAddIssue(e) {
-    e.preventDefault()
-    if (!issue.trim()) return alert('Please describe the issue.')
-
-    const { error } = await supabase.from('maintenance').insert([
-      {
+      .from("maintenance")
+      .select(`
+        id,
         issue,
         priority,
-        status: 'Open',
-        house_id:
-          houses.find((h) => h.name === currentHouse)?.id || houses[0]?.id || null,
-        submitted_by: assignedTo || null,
-      },
-    ])
+        status,
+        created_at,
+        resolved_at,
+        staff:submitted_by ( name )
+      `)
+      .order("created_at", { ascending: false });
 
-    if (error) return alert('⚠️ Error adding issue.')
-    alert('✅ Issue logged successfully.')
-    setIssue('')
-    setPriority('Medium')
-    fetchMaintenance()
+    if (error) {
+      console.error("Maintenance fetch error:", error.message);
+      setIssues([]);
+      return;
+    }
+    setIssues(data || []);
   }
 
-  async function handleResolveIssue(id) {
+  async function handleAddIssue() {
+    if (!issueText.trim()) {
+      alert("Please describe the issue first.");
+      return;
+    }
+
+    const payload = {
+      issue: issueText.trim(),
+      priority,
+      status: "Open",
+      submitted_by: staffId, // ✅ valid FK (null if not matched)
+      house_id: null,
+      assigned_to: null,
+    };
+
+    if (location.trim()) {
+      payload.issue = `${payload.issue} (Location: ${location.trim()})`;
+    }
+
+    const { error } = await supabase.from("maintenance").insert([payload]);
+    if (error) {
+      console.error("Add issue error:", error.message);
+      alert("⚠️ Error adding maintenance issue.");
+      return;
+    }
+
+    setIssueText("");
+    setLocation("");
+    await fetchIssues();
+  }
+
+  async function updateStatus(rowId, newStatus) {
+    const patch = { status: newStatus };
+    if (newStatus === "Resolved") patch.resolved_at = new Date().toISOString();
+
     const { error } = await supabase
-      .from('maintenance')
-      .update({ status: 'Resolved', resolved_at: new Date().toISOString() })
-      .eq('id', id)
+      .from("maintenance")
+      .update(patch)
+      .eq("id", rowId);
 
-    if (!error) fetchMaintenance()
+    if (error) {
+      console.error("Status update error:", error.message);
+      return;
+    }
+    fetchIssues();
   }
 
-  async function handleDeleteIssue(id) {
-    if (!confirm('Are you sure you want to delete this issue?')) return
-    const { error } = await supabase.from('maintenance').delete().eq('id', id)
-    if (!error) fetchMaintenance()
+  async function deleteIssue(rowId) {
+    if (userRole !== "Admin") {
+      alert("Only Admin can delete maintenance issues.");
+      return;
+    }
+    if (!confirm("Delete this maintenance issue?")) return;
+
+    const { error } = await supabase
+      .from("maintenance")
+      .delete()
+      .eq("id", rowId);
+
+    if (error) {
+      console.error("Delete error:", error.message);
+      return;
+    }
+    fetchIssues();
   }
 
-  // -------------------------
-  //  UI
-  // -------------------------
+  const filteredIssues = useMemo(() => {
+    if (statusFilter === "All") return issues;
+    return (issues || []).filter((i) => i.status === statusFilter);
+  }, [issues, statusFilter]);
+
+  const statusBadge = (value) => {
+    const base = "px-2 py-1 rounded text-xs font-medium";
+    if (value === "Open") return `${base} bg-yellow-100 text-yellow-800`;
+    if (value === "In Progress") return `${base} bg-blue-100 text-blue-800`;
+    if (value === "Resolved") return `${base} bg-green-100 text-green-800`;
+    return `${base} bg-gray-100 text-gray-700`;
+  };
+
+  const priorityBadge = (p) => {
+    const base = "px-2 py-1 rounded text-xs font-medium";
+    if (p === "High") return `${base} bg-red-100 text-red-800`;
+    if (p === "Medium") return `${base} bg-yellow-100 text-yellow-800`;
+    return `${base} bg-green-100 text-green-800`; // Low
+  };
+
   return (
-    <div className="p-6 space-y-6">
-      <h2 className="text-2xl font-semibold">Maintenance Dashboard</h2>
-      <p className="text-sm text-gray-600">
-        Currently Viewing:{' '}
-        <strong>{currentHouse || 'All Houses (Admin)'}</strong>
-      </p>
+    <Card className="m-6">
+      <CardHeader>
+        <CardTitle>Maintenance Dashboard</CardTitle>
+        <p className="text-sm text-gray-500">
+          Currently Viewing: All Houses ({userRole})
+        </p>
+      </CardHeader>
 
-      {/* --- Add New Issue Form --- */}
-      <Card className="p-4 shadow-sm">
-        <form
-          onSubmit={handleAddIssue}
-          className="grid md:grid-cols-4 gap-3 items-center"
-        >
-          <input
-            type="text"
-            value={issue}
-            onChange={(e) => setIssue(e.target.value)}
-            placeholder="Describe issue"
-            className="border p-2 rounded"
-            required
+      <CardContent>
+        {/* Add Issue */}
+        <div className="flex flex-wrap gap-2 mb-6">
+          <Input
+            placeholder="Describe issue (e.g., AC not working)"
+            value={issueText}
+            onChange={(e) => setIssueText(e.target.value)}
+            className="min-w-[260px]"
           />
+
           <select
+            className="border rounded-md px-3 py-2"
             value={priority}
             onChange={(e) => setPriority(e.target.value)}
-            className="border p-2 rounded"
           >
-            <option>Low</option>
-            <option>Medium</option>
-            <option>High</option>
+            <option value="Low">Low</option>
+            <option value="Medium">Medium</option>
+            <option value="High">High</option>
           </select>
 
+          <Input
+            placeholder="Location / Unit (e.g., Blue Bldg Apt 5)"
+            value={location}
+            onChange={(e) => setLocation(e.target.value)}
+            className="min-w-[220px]"
+          />
+
+          <Button onClick={handleAddIssue}>Add Issue</Button>
+        </div>
+
+        {/* Filters */}
+        <div className="flex items-center gap-3 mb-4">
+          <span className="text-sm text-gray-600">Status:</span>
           <select
-            value={assignedTo}
-            onChange={(e) => setAssignedTo(e.target.value)}
-            className="border p-2 rounded"
+            className="border rounded-md px-3 py-2"
+            value={statusFilter}
+            onChange={(e) => setStatusFilter(e.target.value)}
           >
-            <option value="">Assign to...</option>
-            {staffList.map((s) => (
-              <option key={s.id} value={s.id}>
-                {s.name}
-              </option>
-            ))}
+            <option>All</option>
+            <option>Open</option>
+            <option>In Progress</option>
+            <option>Resolved</option>
           </select>
+        </div>
 
-          <button
-            type="submit"
-            className="bg-blue-600 text-white py-2 rounded hover:bg-blue-700"
-          >
-            Add Issue
-          </button>
-        </form>
-      </Card>
+        {/* Table */}
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Issue</TableHead>
+              <TableHead>Priority</TableHead>
+              <TableHead>Status</TableHead>
+              <TableHead>Submitted By</TableHead>
+              <TableHead>House</TableHead>
+              <TableHead>Created</TableHead>
+              <TableHead>Resolved</TableHead>
+              <TableHead>Actions</TableHead>
+            </TableRow>
+          </TableHeader>
 
-      {/* --- Maintenance Table --- */}
-      <Card className="shadow-lg border rounded-2xl bg-white mt-6">
-        <CardHeader>
-          <CardTitle className="text-lg font-semibold text-gray-700">
-            Maintenance Requests
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <table className="w-full border-collapse border border-gray-200 text-sm">
-            <thead className="bg-gray-100">
-              <tr>
-                <th className="border p-2 text-left">Issue</th>
-                <th className="border p-2 text-left">Priority</th>
-                <th className="border p-2 text-left">Status</th>
-                <th className="border p-2 text-left">Assigned Staff</th>
-                <th className="border p-2 text-left">Submitted By</th>
-                <th className="border p-2 text-left">House</th>
-                <th className="border p-2 text-left">Created</th>
-                <th className="border p-2 text-left">Resolved</th>
-                <th className="border p-2 text-center">Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {maintenance.map((m) => (
-                <tr key={m.id} className="border-t">
-                  <td className="border p-2">{m.issue}</td>
-                  <td className="border p-2">{m.priority}</td>
-                  <td className="border p-2">
-                    <span
-                      className={`px-2 py-1 rounded-full text-xs font-semibold ${
-                        m.status === 'Open'
-                          ? 'bg-yellow-100 text-yellow-800'
-                          : 'bg-green-100 text-green-800'
-                      }`}
+          <TableBody>
+            {filteredIssues.map((row) => (
+              <TableRow key={row.id}>
+                <TableCell className="whitespace-pre-wrap">{row.issue}</TableCell>
+                <TableCell>
+                  <span className={priorityBadge(row.priority)}>{row.priority}</span>
+                </TableCell>
+                <TableCell>
+                  <span className={statusBadge(row.status)}>{row.status}</span>
+                </TableCell>
+                <TableCell>{row.staff?.name ?? "—"}</TableCell>
+                <TableCell>{row.house_id ? "—" : "—"}</TableCell>
+                <TableCell>
+                  {row.created_at ? new Date(row.created_at).toLocaleDateString() : "—"}
+                </TableCell>
+                <TableCell>
+                  {row.resolved_at ? new Date(row.resolved_at).toLocaleDateString() : "—"}
+                </TableCell>
+                <TableCell className="flex gap-2">
+                  {row.status === "Open" && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => updateStatus(row.id, "In Progress")}
                     >
-                      {m.status}
-                    </span>
-                  </td>
-                  <td className="border p-2">{m.assigned_to_name || '—'}</td>
-                  <td className="border p-2">{m.submitted_by_name || '—'}</td>
-                  <td className="border p-2">{m.house_name || '—'}</td>
-                  <td className="border p-2">
-                    {new Date(m.created_at).toLocaleDateString()}
-                  </td>
-                  <td className="border p-2">
-                    {m.resolved_at
-                      ? new Date(m.resolved_at).toLocaleDateString()
-                      : '—'}
-                  </td>
-                  <td className="border p-2 text-center space-x-3">
-                    {m.status === 'Open' && (
-                      <button
-                        onClick={() => handleResolveIssue(m.id)}
-                        className="text-blue-600 hover:underline"
-                      >
-                        Resolve
-                      </button>
-                    )}
-                    <button
-                      onClick={() => handleDeleteIssue(m.id)}
-                      className="text-red-600 hover:underline"
+                      Start
+                    </Button>
+                  )}
+                  {row.status === "In Progress" && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => updateStatus(row.id, "Resolved")}
+                    >
+                      Resolve
+                    </Button>
+                  )}
+                  {userRole === "Admin" && (
+                    <Button
+                      variant="destructive"
+                      size="sm"
+                      onClick={() => deleteIssue(row.id)}
                     >
                       Delete
-                    </button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </CardContent>
-      </Card>
-    </div>
-  )
+                    </Button>
+                  )}
+                </TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </CardContent>
+    </Card>
+  );
 }

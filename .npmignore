@@ -1,0 +1,4 @@
+# Ignore build-only directories
+node_modules/
+.next/
+supabase/functions/
