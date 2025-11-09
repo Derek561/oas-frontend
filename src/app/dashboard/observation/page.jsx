@@ -142,11 +142,12 @@ export default function ObservationPage() {
       return alert('⚠️ Error adding observation entry.')
     }
 
-    alert('✅ Observation logged successfully.')
-    setResidentId('')
-    setShiftName('')
-    setNoteText('')
-    fetchObservations(currentHouseId, userRole)
+    alert('✅ Observation logged successfully.');
+setResidents((prev) => prev.filter((r) => r.rid !== residentId));
+setResidentId('');
+setShiftName('');
+setNoteText('');
+fetchObservations(currentHouseId, userRole);
   }
 
   // ❌ Delete note

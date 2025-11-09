@@ -2,20 +2,21 @@
 
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
-import { useRouter } from 'next/navigation'
+import { useRouter, usePathname } from 'next/navigation'
 import { getActiveStaff } from '@/lib/getActiveStaff'
 import { logoutStaff } from '@/lib/logoutStaff'
 
 export default function DashboardLayout({ children }) {
   const router = useRouter()
+  const pathname = usePathname()
   const [staff, setStaff] = useState(null)
   const [loading, setLoading] = useState(true)
 
+  // Session validation
   useEffect(() => {
-    // Validate local session and redirect if missing
     const activeStaff = getActiveStaff()
     if (!activeStaff) {
-      console.warn('No active session found. Redirecting to login...')
+      console.warn('⚠️ No active session found. Redirecting to login...')
       router.push('/login')
       return
     }
@@ -23,7 +24,6 @@ export default function DashboardLayout({ children }) {
     setLoading(false)
   }, [router])
 
-  // Unified logout handler
   async function handleLogout() {
     try {
       await logoutStaff()
@@ -58,16 +58,26 @@ export default function DashboardLayout({ children }) {
     )
   }
 
+  const navItems = [
+    { name: 'Home', href: '/dashboard' },
+    { name: 'Residents', href: '/dashboard/residents' },
+    { name: 'Maintenance', href: '/dashboard/maintenance' },
+    { name: 'Shift Turnover', href: '/dashboard/turnover' },
+    { name: 'Observation Notes', href: '/dashboard/observation' },
+    { name: 'Census', href: '/dashboard/census' },
+    { name: 'Audit', href: '/dashboard/audit' },
+  ]
+
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col">
-      {/* Top Navigation */}
+      {/* Top Header */}
       <header className="flex justify-between items-center bg-white shadow p-4">
         <h1 className="text-lg font-semibold text-gray-800">
-          Oceanside Housing Dashboard
+          Oceanside Housing System
         </h1>
         <div className="flex items-center space-x-3">
           <span className="text-gray-700 text-sm">
-            {staff.name || 'Staff'} ({staff.role || 'User'})
+            {staff?.name || 'Staff'} ({staff?.role || 'User'})
           </span>
           <button
             onClick={handleLogout}
@@ -78,31 +88,30 @@ export default function DashboardLayout({ children }) {
         </div>
       </header>
 
-      {/* 👇 ADD THIS NEW NAVIGATION BAR BELOW THE HEADER 👇 */}
+      {/* Navigation Bar */}
       <nav className="flex flex-wrap gap-4 text-sm font-medium text-gray-700 bg-gray-100 px-6 py-3 shadow-inner">
-        <Link href="/dashboard/residents" className="hover:text-blue-600">
-          Residents
-        </Link>
-        <Link href="/dashboard/maintenance" className="hover:text-blue-600">
-          Maintenance
-        </Link>
-        <Link href="/dashboard/turnover" className="hover:text-blue-600">
-          Shift Turnover
-        </Link>
-        <Link href="/dashboard/observation" className="hover:text-blue-600">
-          Observation Notes
-        </Link>
-        <Link href="/dashboard/census" className="hover:text-blue-600">
-          Census
-        </Link>
-        <Link href="/dashboard/audit" className="hover:text-blue-600">
-          Audit
-        </Link>
+        {navItems.map((item) => (
+          <Link
+            key={item.name}
+            href={item.href}
+            className={`transition-colors ${
+              pathname === item.href
+                ? 'text-blue-700 font-semibold underline underline-offset-4'
+                : 'hover:text-blue-600'
+            }`}
+          >
+            {item.name}
+          </Link>
+        ))}
       </nav>
-      {/* 👆 END NAVIGATION BAR 👆 */}
 
       {/* Page Body */}
       <main className="flex-1 p-6">{children}</main>
+
+      {/* Footer (Optional, can be removed or restyled later) */}
+      <footer className="bg-white border-t text-sm text-gray-500 text-center py-3">
+        © {new Date().getFullYear()} Oceanside Housing LLC — Internal Staff Portal
+      </footer>
     </div>
   )
 }
