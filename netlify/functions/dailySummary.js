@@ -1,4 +1,3 @@
-import fetch from "node-fetch";
 import { Resend } from "resend";
 import { createClient } from "@supabase/supabase-js";
 
@@ -9,7 +8,7 @@ const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
 );
 
-export const handler = async (event, context) => {
+export const handler = async () => {
   try {
     // Fetch 24-hour census and observation snapshot
     const { data: censusData, error: censusError } = await supabase
