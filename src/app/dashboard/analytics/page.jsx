@@ -1,112 +1,149 @@
 'use client'
-import { useEffect, useState } from 'react'
+
+import { useEffect, useState, useMemo } from 'react'
 import { supabase } from '@/lib/supabaseClient'
 import {
-  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend
+  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend,
 } from 'recharts'
 
 export default function AnalyticsPage() {
-  const [data, setData] = useState([])
-  const [summary, setSummary] = useState({})
+  const [rows, setRows] = useState([])
+  const [loading, setLoading] = useState(false)
+  const [lastUpdated, setLastUpdated] = useState(null)
 
-  useEffect(() => {
-    fetchAnalytics()
-  }, [])
+  useEffect(() => { fetchData() }, [])
 
-  async function fetchAnalytics() {
-    const { data, error } = await supabase.from('census_intelligence').select('*')
-    if (error) console.error('Error fetching analytics:', error)
-    else {
-      setData(data)
-      calculateSummary(data)
+  async function fetchData() {
+    setLoading(true)
+    const { data, error } = await supabase
+      .from('vw_room_occupancy')
+      .select('*')
+      .order('house_name', { ascending: true })
+      .order('room_number', { ascending: true })
+
+    if (error) {
+      console.error('analytics vw_room_occupancy error:', error)
+      setRows([])
+    } else {
+      setRows(data || [])
+      setLastUpdated(new Date())
     }
+    setLoading(false)
   }
 
-  function calculateSummary(rows) {
-    const totalBeds = rows.reduce((a, b) => a + (b.total_capacity || 0), 0)
-    const totalResidents = rows.reduce((a, b) => a + (b.active_count || 0), 0)
-    const avgOccupancy = rows.length
-      ? (rows.reduce((a, b) => a + (b.occupancy_percent || 0), 0) / rows.length).toFixed(1)
-      : 0
-    const overCapacity = rows.filter(r => r.occupancy_percent > 100).length
-    setSummary({ totalBeds, totalResidents, avgOccupancy, overCapacity })
-  }
+  const summary = useMemo(() => {
+    const totalBeds = rows.reduce((a, r) => a + (r.capacity || 0), 0)
+    const totalResidents = rows.reduce((a, r) => a + (r.active_residents || 0), 0)
+    const overCapacity = rows.filter(r => (r.active_residents || 0) > (r.capacity || 0)).length
+    const avgPct = totalBeds > 0 ? ((totalResidents / totalBeds) * 100).toFixed(1) : '0.0'
+    return { totalBeds, totalResidents, avgPct, overCapacity }
+  }, [rows])
+
+  // Aggregate to house level for chart + table
+  const byHouse = useMemo(() => {
+    const map = new Map()
+    for (const r of rows) {
+      const key = r.house_name?.trim() || 'Unassigned House'
+      const item = map.get(key) || { house: key, total_capacity: 0, active_count: 0, last_census: null }
+      item.total_capacity += r.capacity || 0
+      item.active_count += r.active_residents || 0
+      map.set(key, item)
+    }
+    return Array.from(map.values())
+  }, [rows])
 
   return (
     <div className="p-6 space-y-8">
-      <h2 className="text-xl font-semibold mb-4">Census Intelligence Dashboard</h2>
-
-      {/* Summary Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <div className="bg-white shadow rounded-xl p-4 border">
-          <h3 className="text-gray-500 text-sm">Total Beds</h3>
-          <p className="text-2xl font-semibold">{summary.totalBeds ?? 0}</p>
-        </div>
-        <div className="bg-white shadow rounded-xl p-4 border">
-          <h3 className="text-gray-500 text-sm">Active Residents</h3>
-          <p className="text-2xl font-semibold">{summary.totalResidents ?? 0}</p>
-        </div>
-        <div className="bg-white shadow rounded-xl p-4 border">
-          <h3 className="text-gray-500 text-sm">Avg Occupancy %</h3>
-          <p className="text-2xl font-semibold">{summary.avgOccupancy ?? 0}%</p>
-        </div>
-        <div className="bg-white shadow rounded-xl p-4 border">
-          <h3 className="text-gray-500 text-sm">Over-Capacity Alerts</h3>
-          <p className={`text-2xl font-semibold ${summary.overCapacity > 0 ? 'text-red-600' : 'text-green-600'}`}>
-            {summary.overCapacity}
-          </p>
+      <div className="flex items-center justify-between">
+        <h2 className="text-xl font-semibold">Census Intelligence Dashboard</h2>
+        <div className="flex items-center gap-3">
+          <button
+            onClick={fetchData}
+            disabled={loading}
+            className="bg-blue-600 hover:bg-blue-700 text-white text-sm px-3 py-2 rounded-md shadow"
+          >
+            {loading ? 'Refreshing…' : 'Refresh'}
+          </button>
+          <span className="text-sm text-gray-500">
+            {lastUpdated ? `Last updated: ${lastUpdated.toLocaleString()}` : ''}
+          </span>
         </div>
       </div>
 
-      {/* Recharts Graph */}
+      {/* Summary cards */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <Card title="Total Beds" value={summary.totalBeds} />
+        <Card title="Active Residents" value={summary.totalResidents} />
+        <Card title="Avg Occupancy %" value={`${summary.avgPct}%`} />
+        <Card
+          title="Over-Capacity Alerts"
+          value={summary.overCapacity}
+          valueClass={summary.overCapacity > 0 ? 'text-red-600' : 'text-green-600'}
+        />
+      </div>
+
+      {/* House bar chart */}
       <div className="bg-white border rounded-xl shadow p-4">
         <h3 className="font-medium mb-3">House Occupancy Overview</h3>
-        <ResponsiveContainer width="100%" height={320}>
-          <BarChart data={data} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
+        <ResponsiveContainer width="100%" height={340}>
+          <BarChart data={byHouse} margin={{ top: 10, right: 20, left: 0, bottom: 0 }}>
             <CartesianGrid strokeDasharray="3 3" />
-            <XAxis dataKey="house_name" />
+            <XAxis dataKey="house" />
             <YAxis />
             <Tooltip />
             <Legend />
-            <Bar dataKey="total_capacity" fill="#cbd5e1" name="Total Capacity" />
-            <Bar dataKey="active_count" fill="#3b82f6" name="Active Count" />
+            <Bar dataKey="active_count" name="Active Count" />
+            <Bar dataKey="total_capacity" name="Total Capacity" />
           </BarChart>
         </ResponsiveContainer>
       </div>
 
-      {/* Existing Table */}
-      <div>
-        <table className="w-full border-collapse border border-gray-300">
-          <thead className="bg-gray-100">
+      {/* House table */}
+      <div className="bg-white border rounded-xl shadow">
+        <table className="w-full border-collapse">
+          <thead className="bg-gray-50">
             <tr>
-              <th className="border p-2">House</th>
-              <th className="border p-2">Total Capacity</th>
-              <th className="border p-2">Active Count</th>
-              <th className="border p-2">Occupancy %</th>
-              <th className="border p-2">Last Census</th>
+              <Th>House</Th>
+              <Th className="text-center">Total Capacity</Th>
+              <Th className="text-center">Active Count</Th>
+              <Th className="text-center">Occupancy %</Th>
             </tr>
           </thead>
           <tbody>
-            {data.map((row) => (
-              <tr key={row.house_id}>
-                <td className="border p-2">{row.house_name}</td>
-                <td className="border p-2 text-center">{row.total_capacity}</td>
-                <td className="border p-2 text-center">{row.active_count}</td>
-                <td className={`border p-2 text-center font-semibold ${
-                  row.occupancy_percent >= 90
-                    ? 'text-red-600'
-                    : row.occupancy_percent >= 70
-                    ? 'text-yellow-600'
-                    : 'text-green-600'
-                }`}>
-                  {row.occupancy_percent}%
-                </td>
-                <td className="border p-2 text-center">{row.last_census_date}</td>
-              </tr>
-            ))}
+            {byHouse.map(h => {
+              const pct = h.total_capacity > 0 ? ((h.active_count / h.total_capacity) * 100) : 0
+              const color = pct >= 90 ? 'text-red-600' : pct >= 70 ? 'text-yellow-600' : 'text-green-600'
+              return (
+                <tr key={h.house} className="border-t">
+                  <Td>{h.house}</Td>
+                  <Td className="text-center">{h.total_capacity}</Td>
+                  <Td className="text-center">{h.active_count}</Td>
+                  <Td className={`text-center font-semibold ${color}`}>{pct.toFixed(1)}%</Td>
+                </tr>
+              )
+            })}
+            {byHouse.length === 0 && (
+              <tr><Td colSpan={4} className="text-center text-gray-500 py-6">No data</Td></tr>
+            )}
           </tbody>
         </table>
       </div>
     </div>
   )
+}
+
+function Card({ title, value, valueClass = '' }) {
+  return (
+    <div className="bg-white shadow rounded-xl p-4 border">
+      <h3 className="text-gray-500 text-sm">{title}</h3>
+      <p className={`text-2xl font-semibold ${valueClass}`}>{value}</p>
+    </div>
+  )
+}
+
+function Th({ children, className = '' }) {
+  return <th className={`p-3 text-left text-sm font-medium text-gray-700 ${className}`}>{children}</th>
+}
+function Td({ children, className = '', colSpan }) {
+  return <td colSpan={colSpan} className={`p-3 text-sm ${className}`}>{children}</td>
 }
