@@ -1,0 +1,2 @@
+[functions."dailySummary"]
+  schedule = "0 8 * * *"
