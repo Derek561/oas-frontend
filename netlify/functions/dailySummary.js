@@ -2,7 +2,11 @@
 
 export const handler = async (event, context) => {
   try {
-    const response = await fetch(`${process.env.URL || 'http://localhost:3000'}/api/email/daily-summary`);
+    const baseUrl = process.env.URL || 'https://oceansidehousing.llc';
+const response = await fetch(`${baseUrl}/api/email/daily-summary`, {
+  method: 'GET',
+  headers: { 'User-Agent': 'NetlifyFunction' }
+});
 
     const data = await response.json();
     console.log("Daily summary result:", data);
