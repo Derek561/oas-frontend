@@ -2,9 +2,7 @@
 
 export const handler = async (event, context) => {
   try {
-    const response = await fetch(
-      "https://oceansidehousing.llc/api/email/daily-summary"
-    );
+    const response = await fetch(`${process.env.URL || 'http://localhost:3000'}/api/email/daily-summary`);
 
     const data = await response.json();
     console.log("Daily summary result:", data);
