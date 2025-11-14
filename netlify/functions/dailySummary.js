@@ -1,177 +1,127 @@
-import { Resend } from "resend";
-import { createClient } from "@supabase/supabase-js";
+// netlify/functions/dailySummary.js
 
-const resend = new Resend(process.env.RESEND_API_KEY);
+import { createClient } from '@supabase/supabase-js'
 
-// ------------------------------
-// SUPABASE CLIENT (Service Key)
-// ------------------------------
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL,
-  process.env.SUPABASE_SERVICE_ROLE_KEY,
-  { auth: { persistSession: false } }
-);
+export async function handler(event, context) {
+  console.log("Running dailySummary function…")
 
-export const handler = async (event, context) => {
   try {
-    // TIME WINDOW: Last 24 Hours
-    const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+    // -------------------------------------------
+    // 1. CONNECT TO SUPABASE
+    // -------------------------------------------
+    const supabase = createClient(
+      process.env.SUPABASE_URL,
+      process.env.SUPABASE_SERVICE_ROLE_KEY
+    )
 
-    // ------------------------------
-    // 1. CURRENT CENSUS (Live Count)
-    //    Match HousingCensusPage logic
-    // ------------------------------
-    const { data: censusRows, error: censusError } = await supabase
-      .from("vw_room_occupancy")
-      .select("*");
+    const last24 = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()
 
-    if (censusError) throw censusError;
+    // -------------------------------------------
+    // 2. PULL CENSUS TOTALS
+    // -------------------------------------------
+    const { data: censusData, error: censusError } = await supabase
+      .from('vw_room_occupancy')
+      .select('*')
 
-    const totalBeds = censusRows.reduce(
-      (sum, r) => sum + (r.capacity || 0),
-      0
-    );
-    const occupiedBeds = censusRows.reduce(
-      (sum, r) => sum + (r.active_residents || 0),
-      0
-    );
-    const availableBeds = censusRows.reduce(
-      (sum, r) => sum + (r.open_beds || 0),
-      0
-    );
-    const occupancyRate = totalBeds
-      ? ((occupiedBeds / totalBeds) * 100).toFixed(1)
-      : "0.0";
+    if (censusError) throw censusError
 
-    // ------------------------------
-    // 2. ADMISSIONS (Past 24 Hours)
-    //    Include client names + house
-    // ------------------------------
-    const { data: admissionRows, error: admissionsError } = await supabase
-      .from("resident_events")
-      .select("id, event_type, created_at, resident_name, house_name")
-      .eq("event_type", "admission")
-      .gte("created_at", since)
-      .order("created_at", { ascending: true });
+    const totalBeds = censusData.reduce((a, r) => a + (r.capacity || 0), 0)
+    const occupied = censusData.reduce((a, r) => a + (r.active_residents || 0), 0)
+    const available = totalBeds - occupied
+    const pct = totalBeds > 0 ? ((occupied / totalBeds) * 100).toFixed(1) : '0.0'
 
-    if (admissionsError) throw admissionsError;
+    // -------------------------------------------
+    // 3. ADMISSIONS COUNT
+    // -------------------------------------------
+    const { count: admissionsCount, error: admErr } = await supabase
+      .from('resident_events')
+      .select('*', { count: 'exact', head: true })
+      .eq('event_type', 'admission')
+      .gte('created_at', last24)
 
-    // ------------------------------
-    // 3. DISCHARGES (Past 24 Hours)
-    //    Include client names + house
-    // ------------------------------
-    const { data: dischargeRows, error: dischargesError } = await supabase
-      .from("resident_events")
-      .select("id, event_type, created_at, resident_name, house_name")
-      .eq("event_type", "discharge")
-      .gte("created_at", since)
-      .order("created_at", { ascending: true });
+    if (admErr) throw admErr
 
-    if (dischargesError) throw dischargesError;
+    // -------------------------------------------
+    // 4. DISCHARGES COUNT
+    // -------------------------------------------
+    const { count: dischargesCount, error: disErr } = await supabase
+      .from('resident_events')
+      .select('*', { count: 'exact', head: true })
+      .eq('event_type', 'discharge')
+      .gte('created_at', last24)
 
-    // ------------------------------
-    // 4. OBSERVATION NOTES (Past 24 Hours)
-    //    Full text, not just count
-    // ------------------------------
-    const { data: noteRows, error: notesError } = await supabase
-      .from("observation_notes")
-      .select("id, created_at, house_name, note_text, entered_by")
-      .gte("created_at", since)
-      .order("created_at", { ascending: true });
+    if (disErr) throw disErr
 
-    if (notesError) throw notesError;
+    // -------------------------------------------
+    // 5. OBSERVATION NOTES COUNT
+    // -------------------------------------------
+    const { count: notesCount, error: noteErr } = await supabase
+      .from('observation_notes')
+      .select('*', { count: 'exact', head: true })
+      .gte('created_at', last24)
 
-    // ------------------------------
-    // 5. FORMAT SECTIONS
-    // ------------------------------
-    const fmtDateTime = (iso) =>
-      iso ? new Date(iso).toLocaleString() : "";
+    if (noteErr) throw noteErr
 
-    const admissionsHtml =
-      admissionRows.length === 0
-        ? "<p>No admissions in the past 24 hours.</p>"
-        : `<ul>${admissionRows
-            .map((row) => {
-              const name = row.resident_name || "Unknown client";
-              const house = row.house_name ? ` (${row.house_name})` : "";
-              return `<li>${fmtDateTime(row.created_at)} – <strong>${name}</strong>${house}</li>`;
-            })
-            .join("")}</ul>`;
-
-    const dischargesHtml =
-      dischargeRows.length === 0
-        ? "<p>No discharges in the past 24 hours.</p>"
-        : `<ul>${dischargeRows
-            .map((row) => {
-              const name = row.resident_name || "Unknown client";
-              const house = row.house_name ? ` (${row.house_name})` : "";
-              return `<li>${fmtDateTime(row.created_at)} – <strong>${name}</strong>${house}</li>`;
-            })
-            .join("")}</ul>`;
-
-    const notesHtml =
-      noteRows.length === 0
-        ? "<p>No observation notes logged in the past 24 hours.</p>"
-        : `<ul>${noteRows
-            .map((row) => {
-              const house = row.house_name ? `[${row.house_name}] ` : "";
-              const staff = row.entered_by ? `${row.entered_by}: ` : "";
-              const text = row.note_text || "";
-              return `<li>${fmtDateTime(row.created_at)} – ${house}${staff}${text}</li>`;
-            })
-            .join("")}</ul>`;
-
-    // ------------------------------
-    // 6. FINAL EMAIL HTML
-    // ------------------------------
-    const htmlContent = `
+    // -------------------------------------------
+    // 6. BUILD EMAIL BODY (MATCHES YOUR WORKING FORMAT)
+    // -------------------------------------------
+    const htmlBody = `
       <h2>Oceanside Housing – Executive Summary (Past 24 Hours)</h2>
 
-      <h3>Census Snapshot</h3>
-      <ul>
-        <li><strong>Total Beds:</strong> ${totalBeds}</li>
-        <li><strong>Occupied:</strong> ${occupiedBeds}</li>
-        <li><strong>Available:</strong> ${availableBeds}</li>
-        <li><strong>Occupancy Rate:</strong> ${occupancyRate}%</li>
-      </ul>
+      <p><strong>Total Beds:</strong> ${totalBeds}</p>
+      <p><strong>Occupied:</strong> ${occupied}</p>
+      <p><strong>Available:</strong> ${available}</p>
+      <p><strong>Occupancy Rate:</strong> ${pct}%</p>
 
       <h3>Admissions (Past 24 Hours)</h3>
-      ${admissionsHtml}
+      <p>${admissionsCount === 0 ? "No admissions." : admissionsCount}</p>
 
       <h3>Discharges (Past 24 Hours)</h3>
-      ${dischargesHtml}
+      <p>${dischargesCount === 0 ? "No discharges." : dischargesCount}</p>
 
-      <h3>Observation Notes (Past 24 Hours)</h3>
-      ${notesHtml}
+      <h3>Observation Notes Logged</h3>
+      <p>${notesCount} note(s) in the past 24 hours.</p>
 
-      <p style="font-size:12px;color:#999;">
+      <br/><br/>
+      <p style="font-size:12px;color:#777;">
         Report generated automatically on ${new Date().toLocaleString()}.
       </p>
-    `;
+    `
 
-    // ------------------------------
-    // 7. SEND EMAIL
-    // ------------------------------
-    const emailResult = await resend.emails.send({
-      from: "Oceanside Housing Reports <reports@oceansidehousing.llc>",
-      to: ["derek@simplepathrecovery.net"],
-      subject: "Oceanside Housing – Executive Summary (Past 24 Hours)",
-      html: htmlContent,
-    });
+    // -------------------------------------------
+    // 7. SEND EMAIL (RESEND API)
+    // -------------------------------------------
+    const response = await fetch("https://api.resend.com/emails", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${process.env.RESEND_API_KEY}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        from: "Oceanside Housing Reports <reports@oceansidehousing.llc>",
+        to: ["derek@oceansidehousing.llc"],
+        subject: `Oceanside Housing – Executive Summary (${new Date().toLocaleDateString()})`,
+        html: htmlBody
+      }),
+    })
+
+    const result = await response.json()
+    console.log("Email sent:", result)
 
     return {
       statusCode: 200,
-      body: JSON.stringify({
-        message: "Daily summary sent successfully",
-        details: emailResult,
-      }),
-    };
-  } catch (err) {
-    console.error("Daily Summary Error:", err);
+      body: JSON.stringify({ success: true, details: result })
+    }
 
+  } catch (err) {
+    console.error("Daily Summary Error:", err)
     return {
       statusCode: 500,
-      body: JSON.stringify({ error: err.message }),
-    };
+      body: JSON.stringify({
+        success: false,
+        message: err.message,
+        code: err.code || null
+      })
+    }
   }
-};
+}
