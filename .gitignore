@@ -43,3 +43,6 @@ next-env.d.ts
 
 # Supabase Edge Functions (exclude from build)
 supabase/functions/
+
+# Local Netlify folder
+.netlify
