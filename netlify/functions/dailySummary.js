@@ -1,5 +1,5 @@
 // netlify/functions/dailySummary.js
-
+import fetch from "node-fetch";
 import { createClient } from '@supabase/supabase-js'
 
 export async function handler(event, context) {
@@ -98,7 +98,7 @@ export async function handler(event, context) {
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        from: "Oceanside Housing Reports <reports@oceansidehousing.llc>",
+        from: "DSS Test <onboarding@resend.dev>",
         to: ["derek@oceansidehousing.llc"],
         subject: `Oceanside Housing – Executive Summary (${new Date().toLocaleDateString()})`,
         html: htmlBody
