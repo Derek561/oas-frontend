@@ -18,20 +18,31 @@ export const handler = async (event, context) => {
     const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
 
     // ------------------------------
-    // 1. CURRENT CENSUS (Live Count)
-    // ------------------------------
-    const censusQuery = await supabase
-      .from("vw_room_occupancy")   // 🔥 Your live dashboard uses THIS VIEW
-      .select("*");
+// 1. CURRENT CENSUS (Live Count)
+//    Match HousingCensusPage logic
+// ------------------------------
+const censusQuery = await supabase
+  .from("vw_room_occupancy")
+  .select("*");
 
-    if (censusQuery.error) throw censusQuery.error;
+if (censusQuery.error) throw censusQuery.error;
 
-    const totalBeds = censusQuery.data.length;
-    const occupiedBeds = censusQuery.data.filter(r => r.is_occupied).length;
-    const availableBeds = totalBeds - occupiedBeds;
-    const occupancyRate = totalBeds > 0 
-      ? Math.round((occupiedBeds / totalBeds) * 100)
-      : 0;
+const censusRows = censusQuery.data || [];
+
+// Sum beds exactly like the frontend HousingCensusPage
+const totalBeds = censusRows.reduce((sum, r) => sum + (r.capacity || 0), 0);
+const occupiedBeds = censusRows.reduce((sum, r) => sum + (r.active_residents || 0), 0);
+
+// Prefer explicit open_beds if present, otherwise fall back to total - occupied
+const calculatedAvailable = censusRows.reduce(
+  (sum, r) => sum + (r.open_beds || 0),
+  0
+);
+const availableBeds =
+  calculatedAvailable > 0 ? calculatedAvailable : totalBeds - occupiedBeds;
+
+const occupancyRate =
+  totalBeds > 0 ? ((occupiedBeds / totalBeds) * 100).toFixed(1) : "0.0";
 
     // ------------------------------
     // 2. ADMISSIONS (Past 24 Hours)
