@@ -2,12 +2,9 @@
 import { createClient } from '@supabase/supabase-js'
 
 export async function handler(event, context) {
-  console.log("Running dailySummary function…")
+  console.log("Running DIAGNOSTIC dailySummary...")
 
   try {
-    // -------------------------------------------
-    // 1. CONNECT TO SUPABASE
-    // -------------------------------------------
     const supabase = createClient(
       process.env.SUPABASE_URL,
       process.env.SUPABASE_SERVICE_ROLE_KEY
@@ -16,108 +13,111 @@ export async function handler(event, context) {
     const last24 = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()
 
     // -------------------------------------------
-    // 2. PULL CENSUS TOTALS
+    // CENSUS
     // -------------------------------------------
-    const { data: censusData, error: censusError } = await supabase
+    const { data: census, error: censusErr } = await supabase
       .from('vw_room_occupancy')
       .select('*')
 
-    if (censusError) throw censusError
+    if (censusErr) throw censusErr
 
-    const totalBeds = censusData.reduce((a, r) => a + (r.capacity || 0), 0)
-    const occupied = censusData.reduce((a, r) => a + (r.active_residents || 0), 0)
+    const totalBeds = census.reduce((a, r) => a + (r.capacity || 0), 0)
+    const occupied = census.reduce((a, r) => a + (r.active_residents || 0), 0)
     const available = totalBeds - occupied
-    const pct = totalBeds > 0 ? ((occupied / totalBeds) * 100).toFixed(1) : '0.0'
+    const pct = totalBeds ? ((occupied / totalBeds) * 100).toFixed(1) : "0.0"
 
     // -------------------------------------------
-    // 3. ADMISSIONS COUNT
+    // ADMISSIONS (RETURN FULL ROWS)
     // -------------------------------------------
-    const { count: admissionsCount, error: admErr } = await supabase
+    const { data: admissions, error: admErr } = await supabase
       .from('resident_events')
-      .select('*', { count: 'exact', head: true })
+      .select('*')
       .eq('event_type', 'admission')
       .gte('created_at', last24)
 
     if (admErr) throw admErr
 
+    const admissionsCount = admissions?.length ?? null
+
     // -------------------------------------------
-    // 4. DISCHARGES COUNT
+    // DISCHARGES
     // -------------------------------------------
-    const { count: dischargesCount, error: disErr } = await supabase
+    const { data: discharges, error: disErr } = await supabase
       .from('resident_events')
-      .select('*', { count: 'exact', head: true })
+      .select('*')
       .eq('event_type', 'discharge')
       .gte('created_at', last24)
 
     if (disErr) throw disErr
 
+    const dischargesCount = discharges?.length ?? null
+
     // -------------------------------------------
-    // 5. OBSERVATION NOTES COUNT
+    // OBSERVATION NOTES
     // -------------------------------------------
-    const { count: notesCount, error: noteErr } = await supabase
+    const { data: notes, error: noteErr } = await supabase
       .from('observation_notes')
-      .select('*', { count: 'exact', head: true })
+      .select('*')
       .gte('created_at', last24)
 
     if (noteErr) throw noteErr
 
+    const notesCount = notes?.length ?? null
+
     // -------------------------------------------
-    // 6. BUILD EMAIL BODY (MATCHES YOUR WORKING FORMAT)
+    // BUILD HTML BODY (but DO NOT send)
     // -------------------------------------------
     const htmlBody = `
-      <h2>Oceanside Housing – Executive Summary (Past 24 Hours)</h2>
+      <h2>DIAGNOSTIC – Ocean Housing Summary</h2>
 
-      <p><strong>Total Beds:</strong> ${totalBeds}</p>
-      <p><strong>Occupied:</strong> ${occupied}</p>
-      <p><strong>Available:</strong> ${available}</p>
-      <p><strong>Occupancy Rate:</strong> ${pct}%</p>
+      <p>Total Beds: ${totalBeds}</p>
+      <p>Occupied: ${occupied}</p>
+      <p>Available: ${available}</p>
+      <p>Pct: ${pct}</p>
 
-      <h3>Admissions (Past 24 Hours)</h3>
-      <p>${admissionsCount === 0 ? "No admissions." : admissionsCount}</p>
-
-      <h3>Discharges (Past 24 Hours)</h3>
-      <p>${dischargesCount === 0 ? "No discharges." : dischargesCount}</p>
-
-      <h3>Observation Notes Logged</h3>
-      <p>${notesCount} note(s) in the past 24 hours.</p>
-
-      <br/><br/>
-      <p style="font-size:12px;color:#777;">
-        Report generated automatically on ${new Date().toLocaleString()}.
-      </p>
+      <p>AdmissionsCount: ${admissionsCount}</p>
+      <p>DischargesCount: ${dischargesCount}</p>
+      <p>NotesCount: ${notesCount}</p>
     `
 
     // -------------------------------------------
-    // 7. SEND EMAIL (RESEND API)
+    // LOG EVERYTHING
     // -------------------------------------------
-    const response = await fetch("https://api.resend.com/emails", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${process.env.RESEND_API_KEY}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        from: "DSS Test <onboarding@resend.dev>",
-        to: ["derek@oceansidehousing.llc"],
-        subject: `Oceanside Housing – Executive Summary (${new Date().toLocaleDateString()})`,
-        html: htmlBody
-      }),
+    console.log("=== DIAGNOSTIC OUTPUT ===")
+    console.log({
+      totalBeds,
+      occupied,
+      available,
+      pct,
+      admissions,
+      admissionsCount,
+      discharges,
+      dischargesCount,
+      notes,
+      notesCount,
+      htmlBody
     })
-
-    const result = await response.json()
-    console.log("Email sent:", result)
 
     return {
       statusCode: 200,
-      body: JSON.stringify({ success: true, details: result })
+      body: JSON.stringify({
+        diagnostic: true,
+        totalBeds,
+        occupied,
+        available,
+        pct,
+        admissionsCount,
+        dischargesCount,
+        notesCount
+      })
     }
 
   } catch (err) {
-    console.error("Daily Summary Error:", err)
+    console.error("DIAGNOSTIC ERROR:", err)
     return {
       statusCode: 500,
       body: JSON.stringify({
-        success: false,
+        error: true,
         message: err.message,
         code: err.code || null
       })
