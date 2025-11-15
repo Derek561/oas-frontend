@@ -1,8 +1,9 @@
 // netlify/functions/dailySummary.js
-import { createClient } from '@supabase/supabase-js'
 
-export async function handler(event, context) {
-  console.log("Running DAILY SUMMARY (production)…")
+const { createClient } = require('@supabase/supabase-js')
+
+exports.handler = async (event, context) => {
+  console.log('Running DAILY SUMMARY (production)…')
 
   try {
     // -------------------------------------------
@@ -25,8 +26,16 @@ export async function handler(event, context) {
 
     if (censusErr) throw censusErr
 
-    const totalBeds = census.reduce((a, r) => a + (r.capacity || 0), 0)
-    const occupied = census.reduce((a, r) => a + (r.active_residents || 0), 0)
+    const safeCensus = census || []
+
+    const totalBeds = safeCensus.reduce(
+      (a, r) => a + (r.capacity || 0),
+      0
+    )
+    const occupied = safeCensus.reduce(
+      (a, r) => a + (r.active_residents || 0),
+      0
+    )
     const available = totalBeds - occupied
     const pct = totalBeds ? ((occupied / totalBeds) * 100).toFixed(1) : '0.0'
 
@@ -43,8 +52,9 @@ export async function handler(event, context) {
 
     if (eventsErr) throw eventsErr
 
-    const admissions = events.filter(e => e.event_type === 'admission')
-    const discharges = events.filter(e => e.event_type === 'discharge')
+    const safeEvents = events || []
+    const admissions = safeEvents.filter(e => e.event_type === 'admission')
+    const discharges = safeEvents.filter(e => e.event_type === 'discharge')
 
     // -------------------------------------------
     // 4. Observation notes in last 24h
@@ -56,16 +66,18 @@ export async function handler(event, context) {
 
     if (notesErr) throw notesErr
 
+    const safeNotes = notes || []
+
     // -------------------------------------------
     // 5. Pull resident names for all involved IDs
     // -------------------------------------------
-    const residentIdSet = new Set<string>()
+    const residentIdSet = new Set()
 
     admissions.forEach(e => e.resident_id && residentIdSet.add(e.resident_id))
     discharges.forEach(e => e.resident_id && residentIdSet.add(e.resident_id))
-    notes.forEach(n => n.resident_id && residentIdSet.add(n.resident_id))
+    safeNotes.forEach(n => n.resident_id && residentIdSet.add(n.resident_id))
 
-    let residentMap = new Map<string, any>()
+    let residentMap = new Map()
 
     if (residentIdSet.size > 0) {
       const { data: residents, error: resErr } = await supabase
@@ -75,28 +87,28 @@ export async function handler(event, context) {
 
       if (resErr) throw resErr
 
-      residentMap = new Map(
-        residents.map(r => [r.id, r])
-      )
+      if (residents && residents.length) {
+        residentMap = new Map(residents.map(r => [r.id, r]))
+      }
     }
 
-    const getResidentName = (residentId?: string | null) => {
+    function getResidentName(residentId) {
       if (!residentId) return 'Unknown Resident'
       const r = residentMap.get(residentId)
-      if (!r) return `Resident (${residentId.slice(0, 8)})`
+      if (!r) return `Resident (${String(residentId).slice(0, 8)})`
       const first = r.first_name || ''
       const last = r.last_name || ''
       const full = `${first} ${last}`.trim()
-      return full || `Resident (${residentId.slice(0, 8)})`
+      return full || `Resident (${String(residentId).slice(0, 8)})`
     }
 
-    const fmtDateTime = (iso: string | null) => {
+    function fmtDateTime(iso) {
       if (!iso) return ''
       try {
         return new Date(iso).toLocaleString('en-US', {
           timeZone: 'America/New_York'
         })
-      } catch {
+      } catch (e) {
         return iso
       }
     }
@@ -118,14 +130,14 @@ export async function handler(event, context) {
       return `${name} – ${reason}${extraNote} (${ts})`
     })
 
-    const notesLines = notes.map(n => {
+    const notesLines = safeNotes.map(n => {
       const name = getResidentName(n.resident_id)
       const ts = fmtDateTime(n.created_at)
       const shift = n.shift_name || 'Shift not recorded'
       return `${name} – "${n.note_text}" (${shift}, ${ts})`
     })
 
-    const renderList = (lines: string[]) => {
+    function renderList(lines) {
       if (!lines || !lines.length) return '<p>None.</p>'
       return `<ul>${lines.map(l => `<li>${l}</li>`).join('')}</ul>`
     }
@@ -145,15 +157,17 @@ export async function handler(event, context) {
       </ul>
 
       <h3>Admissions (Past 24 Hours)</h3>
-      ${admissionsLines.length === 0
-        ? '<p>No admissions.</p>'
-        : renderList(admissionsLines)
+      ${
+        admissionsLines.length === 0
+          ? '<p>No admissions.</p>'
+          : renderList(admissionsLines)
       }
 
       <h3>Discharges (Past 24 Hours)</h3>
-      ${dischargesLines.length === 0
-        ? '<p>No discharges.</p>'
-        : renderList(dischargesLines)
+      ${
+        dischargesLines.length === 0
+          ? '<p>No discharges.</p>'
+          : renderList(dischargesLines)
       }
 
       <h3>Observation Notes Logged</h3>
@@ -171,48 +185,49 @@ export async function handler(event, context) {
     // 8. Send email via Resend
     // -------------------------------------------
     const payload = {
-      from: "Oceanside Housing Reports <reports@oceansidehousing.llc>",
-      to: ["derek@oceansidehousing.llc"],   // we can add CCs later
-      subject: `Oceanside Housing – Executive Summary (${now.toLocaleDateString('en-US')})`,
+      from: 'Oceanside Housing Reports <reports@oceansidehousing.llc>',
+      to: ['derek@oceansidehousing.llc'], // add CCs later
+      subject: `Oceanside Housing – Executive Summary (${now.toLocaleDateString(
+        'en-US'
+      )})`,
       html: htmlBody
     }
 
-    console.log("Resend payload (meta only):", {
+    console.log('Resend payload (meta only):', {
       toCount: payload.to.length,
-      subject: payload.subject,
+      subject: payload.subject
     })
 
-    const response = await fetch("https://api.resend.com/emails", {
-      method: "POST",
+    const response = await fetch('https://api.resend.com/emails', {
+      method: 'POST',
       headers: {
         Authorization: `Bearer ${process.env.RESEND_API_KEY}`,
-        "Content-Type": "application/json",
+        'Content-Type': 'application/json'
       },
-      body: JSON.stringify(payload),
+      body: JSON.stringify(payload)
     })
 
     if (!response.ok) {
       const text = await response.text()
-      console.error("Resend error:", response.status, text)
+      console.error('Resend error:', response.status, text)
       throw new Error(`Resend failed with status ${response.status}`)
     }
 
     const result = await response.json()
-    console.log("Resend success:", result)
+    console.log('Resend success:', result)
 
     return {
       statusCode: 200,
       body: JSON.stringify({ success: true })
     }
-
-  } catch (err: any) {
-    console.error("Daily Summary Error:", err)
+  } catch (err) {
+    console.error('Daily Summary Error:', err)
     return {
       statusCode: 500,
       body: JSON.stringify({
         success: false,
-        message: err.message,
-        code: err.code || null
+        message: err && err.message ? err.message : String(err),
+        code: err && err.code ? err.code : null
       })
     }
   }
