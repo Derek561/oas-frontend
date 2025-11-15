@@ -1,5 +1,4 @@
 // netlify/functions/dailySummary.js
-import fetch from "node-fetch";
 import { createClient } from '@supabase/supabase-js'
 
 export async function handler(event, context) {
