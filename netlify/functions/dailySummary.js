@@ -158,20 +158,20 @@ exports.handler = async function (event, context) {
     if (residentIds.size > 0) {
       const { data: residents, error: resErr } = await supabase
         .from("residents")
-        .select("id, first_name, last_name, unit_number")
+        .select("id, first_name, last_name")
         .in("id", Array.from(residentIds));
 
       if (resErr) throw resErr;
 
       residentMap = new Map(
-        residents.map((r) => [
-          r.id,
-          {
-            name: `${r.first_name || ""} ${r.last_name || ""}`.trim(),
-            unit: r.unit_number || null,
-          },
-        ])
-      );
+  residents.map((r) => [
+    r.id,
+    {
+      name: `${r.first_name || ""} ${r.last_name || ""}`.trim(),
+      // no unit stored
+    },
+  ])
+);
     }
 
     function getResident(rid) {
@@ -182,12 +182,11 @@ exports.handler = async function (event, context) {
        6. FORMAT OUTPUT LINES (FORMAT B)
     ------------------------------------------------------- */
     const formatAdmission = (ev) => {
-      const house = getHouseInfo(ev.house_id);
-      const r = getResident(ev.resident_id);
-      const ts = formatTimestamp(ev.created_at);
-      const unit = r.unit ? ` (Unit ${r.unit})` : "";
-      return `${house.icon} – ${r.name}${unit} – admitted (${ts})`;
-    };
+  const house = getHouseInfo(ev.house_id);
+  const r = getResident(ev.resident_id);
+  const ts = formatTimestamp(ev.created_at);
+  return `${house.icon} – ${r.name} – admitted (${ts})`;
+};
 
     const formatDischarge = (ev) => {
       const house = getHouseInfo(ev.house_id);
