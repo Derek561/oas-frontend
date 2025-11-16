@@ -1,43 +1,13 @@
 // netlify/functions/dailySummary.js
 const { createClient } = require("@supabase/supabase-js");
 
-/* ----------------------------------------------------------
-   BUILDING LABELS (ICON + NAME)
------------------------------------------------------------ */
-function buildingLabel(gender) {
-  if (gender === "Male") return "🟥 Building A";
-  if (gender === "Female") return "🟩 Building B";
-  return "🔵 Building C"; // Coed or unknown
-}
-
-/* ----------------------------------------------------------
-   TIMESTAMP FORMAT (MM/DD HH:MM AM/PM)
------------------------------------------------------------ */
-function formatTimestamp(iso) {
-  if (!iso) return "";
-  try {
-    const d = new Date(iso);
-    const opts = {
-      timeZone: "America/New_York",
-      month: "2-digit",
-      day: "2-digit",
-      hour: "numeric",
-      minute: "2-digit",
-      hour12: true,
-    };
-    return d.toLocaleString("en-US", opts).replace(",", "");
-  } catch {
-    return iso;
-  }
-}
-
-/* ----------------------------------------------------------
-   MAIN HANDLER
------------------------------------------------------------ */
 exports.handler = async function (event, context) {
   console.log("Running DAILY SUMMARY (production)…");
 
   try {
+    // ---------------------------------------------------------
+    // 1. Initialize Supabase
+    // ---------------------------------------------------------
     const supabase = createClient(
       process.env.SUPABASE_URL,
       process.env.SUPABASE_SERVICE_ROLE_KEY
@@ -46,94 +16,59 @@ exports.handler = async function (event, context) {
     const now = new Date();
     const last24 = new Date(now.getTime() - 24 * 60 * 60 * 1000).toISOString();
 
-    /* ------------------------------------------------------
-       1. LOAD BUILDING (HOUSE) METADATA
-    ------------------------------------------------------- */
-    const { data: houses, error: housesErr } = await supabase
-      .from("houses")
-      .select("id, name, gender");
-
-    if (housesErr) throw housesErr;
-
-    const houseMap = new Map();
-    houses.forEach((h) => houseMap.set(h.id, h));
+    // ---------------------------------------------------------
+    // 2. House nickname + icon map
+    // ---------------------------------------------------------
+    const HOUSE_NICKNAMES = {
+      "308bb7cb-90f0-4e83-9d10-1c5b92c2bf0d": { label: "8th Court", icon: "🟢" },
+      "80ae39a3-be84-47e8-bada-6c59c466bbef": { label: "626", icon: "🔵" },
+      "PUT-BLUE-HOUSE-ID-HERE": { label: "Blue Building", icon: "🟣" }
+    };
 
     function getHouseInfo(houseId) {
-      if (!houseId) return { icon: "🔵 Building C", name: "Building C" };
-      const h = houseMap.get(houseId);
-      if (!h) return { icon: "🔵 Building C", name: "Building C" };
-
-      return {
-        icon: buildingLabel(h.gender),
-        name: h.name || "Unknown House",
-      };
+      return (
+        HOUSE_NICKNAMES[houseId] || {
+          label: "Unknown House",
+          icon: "⚪",
+        }
+      );
     }
 
-    /* ------------------------------------------------------
-       2. CENSUS SNAPSHOT (VW_ROOM_OCCUPANCY)
-    ------------------------------------------------------- */
+    // ---------------------------------------------------------
+    // 3. Census snapshot
+    // ---------------------------------------------------------
     const { data: census, error: censusErr } = await supabase
       .from("vw_room_occupancy")
       .select("*");
 
     if (censusErr) throw censusErr;
 
-    let totalBeds = 0;
-    let occupied = 0;
-
-    const buildingCensus = {
-      "🟥 Building A": { total: 0, occ: 0 },
-      "🟩 Building B": { total: 0, occ: 0 },
-      "🔵 Building C": { total: 0, occ: 0 },
-    };
-
-    census.forEach((row) => {
-      const house = houseMap.get(row.house_id);
-      const label = buildingLabel(house?.gender);
-      totalBeds += row.capacity || 0;
-      occupied += row.active_residents || 0;
-
-      buildingCensus[label].total += row.capacity || 0;
-      buildingCensus[label].occ += row.active_residents || 0;
-    });
-
+    const totalBeds = census.reduce((a, r) => a + (r.capacity || 0), 0);
+    const occupied = census.reduce((a, r) => a + (r.active_residents || 0), 0);
     const available = totalBeds - occupied;
     const pct = totalBeds
       ? ((occupied / totalBeds) * 100).toFixed(1)
       : "0.0";
 
-    /* ------------------------------------------------------
-       3. ADMISSIONS & DISCHARGES (LAST 24H)
-    ------------------------------------------------------- */
+    // ---------------------------------------------------------
+    // 4. Events (Admissions + Discharges)
+    // ---------------------------------------------------------
     const { data: events, error: eventsErr } = await supabase
       .from("resident_events")
       .select(
-        `
-        id,
-        resident_id,
-        house_id,
-        event_type,
-        discharge_reason,
-        notes,
-        created_at
-      `
+        "id, resident_id, house_id, event_type, discharge_reason, notes, created_at"
       )
       .gte("created_at", last24)
       .in("event_type", ["admission", "discharge"]);
 
     if (eventsErr) throw eventsErr;
 
-    const admissions = events
-      .filter((e) => e.event_type === "admission")
-      .sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+    const admissions = events.filter((e) => e.event_type === "admission");
+    const discharges = events.filter((e) => e.event_type === "discharge");
 
-    const discharges = events
-      .filter((e) => e.event_type === "discharge")
-      .sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
-
-    /* ------------------------------------------------------
-       4. OBSERVATION NOTES
-    ------------------------------------------------------- */
+    // ---------------------------------------------------------
+    // 5. Observation Notes
+    // ---------------------------------------------------------
     const { data: notes, error: notesErr } = await supabase
       .from("observation_notes")
       .select("id, resident_id, house_id, note_text, shift_name, created_at")
@@ -141,107 +76,111 @@ exports.handler = async function (event, context) {
 
     if (notesErr) throw notesErr;
 
-    const sortedNotes = notes.sort(
-      (a, b) => new Date(b.created_at) - new Date(a.created_at)
-    );
-
-    /* ------------------------------------------------------
-       5. RESIDENT NAMES
-    ------------------------------------------------------- */
+    // ---------------------------------------------------------
+    // 6. Collect resident IDs to fetch names
+    // ---------------------------------------------------------
     const residentIds = new Set();
-    [...admissions, ...discharges, ...sortedNotes].forEach((e) => {
-      if (e.resident_id) residentIds.add(e.resident_id);
-    });
+
+    admissions.forEach((e) => residentIds.add(e.resident_id));
+    discharges.forEach((e) => residentIds.add(e.resident_id));
+    notes.forEach((n) => residentIds.add(n.resident_id));
 
     let residentMap = new Map();
 
     if (residentIds.size > 0) {
-      const { data: residents, error: resErr } = await supabase
+      const { data: residents, error: rErr } = await supabase
         .from("residents")
         .select("id, first_name, last_name")
         .in("id", Array.from(residentIds));
 
-      if (resErr) throw resErr;
+      if (rErr) throw rErr;
 
       residentMap = new Map(
-  residents.map((r) => [
-    r.id,
-    {
-      name: `${r.first_name || ""} ${r.last_name || ""}`.trim(),
-      // no unit stored
-    },
-  ])
-);
+        residents.map((r) => [
+          r.id,
+          {
+            name: `${r.first_name || ""} ${r.last_name || ""}`.trim(),
+          },
+        ])
+      );
     }
 
     function getResident(rid) {
-      return residentMap.get(rid) || { name: "Unknown", unit: null };
+      return residentMap.get(rid) || { name: "Unknown" };
     }
 
-    /* ------------------------------------------------------
-       6. FORMAT OUTPUT LINES (FORMAT B)
-    ------------------------------------------------------- */
+    function fmtTimestamp(iso) {
+      if (!iso) return "";
+      try {
+        return new Date(iso).toLocaleString("en-US", {
+          timeZone: "America/New_York",
+        });
+      } catch {
+        return iso;
+      }
+    }
+
+    // ---------------------------------------------------------
+    // 7. Formatting helpers
+    // ---------------------------------------------------------
     const formatAdmission = (ev) => {
-  const house = getHouseInfo(ev.house_id);
-  const r = getResident(ev.resident_id);
-  const ts = formatTimestamp(ev.created_at);
-  return `${house.icon} – ${r.name} – admitted (${ts})`;
-};
+      const house = getHouseInfo(ev.house_id);
+      const r = getResident(ev.resident_id);
+      const ts = fmtTimestamp(ev.created_at);
+
+      return `${house.icon} ${house.label} – ${r.name} admitted (${ts})`;
+    };
 
     const formatDischarge = (ev) => {
       const house = getHouseInfo(ev.house_id);
       const r = getResident(ev.resident_id);
-      const ts = formatTimestamp(ev.created_at);
-      const note = ev.notes ? ` – "${ev.notes}"` : "";
-      const reason = ev.discharge_reason || "No reason recorded";
-      return `${house.icon} – ${r.name} – ${reason}${note} (${ts})`;
+      const ts = fmtTimestamp(ev.created_at);
+      const reason = ev.discharge_reason || "no reason recorded";
+
+      return `${house.icon} ${house.label} – ${r.name} – ${reason} (${ts})`;
     };
 
     const formatNote = (n) => {
       const house = getHouseInfo(n.house_id);
       const r = getResident(n.resident_id);
-      const ts = formatTimestamp(n.created_at);
+      const ts = fmtTimestamp(n.created_at);
       const shift = n.shift_name || "";
-      return `${house.icon} – ${r.name} – "${n.note_text}" (${shift}, ${ts})`;
+
+      return `${house.icon} ${house.label} – ${r.name} – “${n.note_text}” (${shift}, ${ts})`;
     };
 
-    /* ------------------------------------------------------
-       7. BUILD EMAIL BODY
-    ------------------------------------------------------- */
     function list(lines) {
       if (!lines.length) return "<p>None.</p>";
       return `<ul>${lines.map((l) => `<li>${l}</li>`).join("")}</ul>`;
     }
 
+    const admissionsLines = admissions.map(formatAdmission);
+    const dischargesLines = discharges.map(formatDischarge);
+    const notesLines = notes.map(formatNote);
+
+    // ---------------------------------------------------------
+    // 8. Build HTML email body
+    // ---------------------------------------------------------
     const htmlBody = `
       <h2>Oceanside Housing – Executive Summary (Past 24 Hours)</h2>
 
       <h3>Census Snapshot</h3>
       <ul>
-        <li><strong>🟥 Building A:</strong> ${
-          buildingCensus["🟥 Building A"].occ
-        } / ${buildingCensus["🟥 Building A"].total}</li>
-        <li><strong>🟩 Building B:</strong> ${
-          buildingCensus["🟩 Building B"].occ
-        } / ${buildingCensus["🟩 Building B"].total}</li>
-        <li><strong>🔵 Building C:</strong> ${
-          buildingCensus["🔵 Building C"].occ
-        } / ${buildingCensus["🔵 Building C"].total}</li>
+        <li><strong>Total Beds:</strong> ${totalBeds}</li>
+        <li><strong>Occupied:</strong> ${occupied}</li>
+        <li><strong>Available:</strong> ${available}</li>
+        <li><strong>Occupancy Rate:</strong> ${pct}%</li>
       </ul>
 
-      <p><strong>Total Beds:</strong> ${totalBeds}</p>
-      <p><strong>Occupied:</strong> ${occupied}</p>
-      <p><strong>Available:</strong> ${available}</p>
-      <p><strong>Occupancy Rate:</strong> ${pct}%</p>
-
       <h3>Admissions (Past 24 Hours)</h3>
-      ${list(admissions.map(formatAdmission))}
+      ${list(admissionsLines)}
 
       <h3>Discharges (Past 24 Hours)</h3>
-      ${list(discharges.map(formatDischarge))}
+      ${list(dischargesLines)}
 
       <h3>Observation Notes Logged</h3>
-      ${list(sortedNotes.map(formatNote))}
+      <p><strong>Total notes:</strong> ${notesLines.length}</p>
+      ${list(notesLines)}
 
       <p style="margin-top:20px;font-size:12px;color:#777;">
         Report generated automatically on ${now.toLocaleString("en-US", {
@@ -250,16 +189,20 @@ exports.handler = async function (event, context) {
       </p>
     `;
 
-    /* ------------------------------------------------------
-       8. SEND EMAIL (RESEND)
-    ------------------------------------------------------- */
+    // ---------------------------------------------------------
+    // 9. Send email via Resend
+    // ---------------------------------------------------------
     const payload = {
       from: "Oceanside Housing Reports <reports@oceansidehousing.llc>",
       to: [
         "derek@oceansidehousing.llc",
         "ocean1@oceansidehousing.llc",
         "ocean2@oceansidehousing.llc",
+
+        // SPR leadership
         "derek@simplepathrecovery.net",
+        "ocean1@simplepathrecovery.net",
+        "ocean2@simplepathrecovery.net",
         "heidi@simplepathrecovery.net",
         "matt@simplepathrecovery.net",
         "cathy@simplepathrecovery.net",
@@ -269,13 +212,15 @@ exports.handler = async function (event, context) {
         "iris@simplepathrecovery.net",
         "paul@simplepathrecovery.net",
         "laurie@simplepathrecovery.net",
-        "amy@simplepathrecovery.net",
+        "amy@simplepathrecovery.net"
       ],
       subject: `Oceanside Housing – Executive Summary (${now.toLocaleDateString(
         "en-US"
       )})`,
       html: htmlBody,
     };
+
+    console.log("Resend payload:", { toCount: payload.to.length });
 
     const response = await fetch("https://api.resend.com/emails", {
       method: "POST",
