@@ -185,13 +185,29 @@ exports.handler = async (event, context) => {
     // 8. Send email via Resend
     // -------------------------------------------
     const payload = {
-      from: 'Oceanside Housing Reports <reports@oceansidehousing.llc>',
-      to: ['derek@oceansidehousing.llc'], // add CCs later
-      subject: `Oceanside Housing – Executive Summary (${now.toLocaleDateString(
-        'en-US'
-      )})`,
-      html: htmlBody
-    }
+  from: "Oceanside Housing Reports <reports@oceansidehousing.llc>",
+  to: [
+    // OHS
+    "derek@oceansidehousing.llc",
+    "ocean1@oceansidehousing.llc",
+    "ocean2@oceansidehousing.llc",
+
+    // SPR leadership
+    "derek@simplepathrecovery.net",
+    "heidi@simplepathrecovery.net",
+    "matt@simplepathrecovery.net",
+    "cathy@simplepathrecovery.net",
+    "dom@simplepathrecovery.net",
+    "drew@simplepathrecovery.net",
+    "jacquelyn@simplepathrecovery.net",
+    "iris@simplepathrecovery.net",
+    "paul@simplepathrecovery.net",
+    "laurie@simplepathrecovery.net",
+    "amy@simplepathrecovery.net"
+  ],
+  subject: `Oceanside Housing – Executive Summary (${now.toLocaleDateString('en-US')})`,
+  html: htmlBody
+}
 
     console.log('Resend payload (meta only):', {
       toCount: payload.to.length,
