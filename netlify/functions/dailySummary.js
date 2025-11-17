@@ -18,8 +18,6 @@ exports.handler = async function (event, context) {
 
     // -------------------------------------------
     // 2. House nickname + icon map
-    //    (REPLACE the UUID placeholders with
-    //     the real IDs from public.houses)
     // -------------------------------------------
     const HOUSE_NICKNAMES = {
       // Oceanside House A – "8th Court"
@@ -31,6 +29,13 @@ exports.handler = async function (event, context) {
       // Blue Building – "Blue Building"
       '80ae39a3-be84-47e8-bada-6c59c466bbef': { label: 'Blue Building', icon: '🔵' }
     }
+
+    // fixed order for reporting: 8th Court → 626 → Blue
+    const HOUSE_ORDER = [
+      '49cf4cfa-e783-4932-b14d-fa1be226111f',
+      '308bb7cb-90f0-4e83-9d10-1c5b92c2bf0d',
+      '80ae39a3-be84-47e8-bada-6c59c466bbef'
+    ]
 
     function getHouseInfo(houseId) {
       if (!houseId) {
@@ -77,8 +82,6 @@ exports.handler = async function (event, context) {
 
     // -------------------------------------------
     // 4. Events in last 24h (admissions + discharges)
-    //    NOTE: now includes ua_level, bac_level,
-    //          and event_details.
     // -------------------------------------------
     const { data: events, error: eventsErr } = await supabase
       .from('resident_events')
@@ -96,6 +99,7 @@ exports.handler = async function (event, context) {
 
     // -------------------------------------------
     // 5. Observation notes in last 24h
+    //    (Now grouped by house in the email)
     // -------------------------------------------
     const { data: notes, error: notesErr } = await supabase
       .from('observation_notes')
@@ -175,9 +179,7 @@ exports.handler = async function (event, context) {
       const detailSource = ev.event_details || ev.notes
       const detailPart = detailSource ? ` – ${detailSource}` : ''
 
-      // (Unit/room intentionally NOT included yet:
-      //  residents table does not expose a unit column to this function.)
-
+      // (Unit/room not included yet; not exposed to this function.)
       return `${house.icon} ${house.label} – ${name}${uaPart}${bacPart}${detailPart} (${ts})`
     }
 
@@ -192,24 +194,57 @@ exports.handler = async function (event, context) {
       return `${house.icon} ${house.label} – ${name} – ${reason}${notesPart} (${ts})`
     }
 
-    function formatNote(n) {
-      const house = getHouseInfo(n.house_id)
-      const name = getResidentName(n.resident_id)
-      const ts = fmtDateTime(n.created_at)
-      const shift = n.shift_name || 'Shift not recorded'
-      const text = n.note_text || ''
-
-      return `${house.icon} ${house.label} – ${name} – "${text}" (${shift}, ${ts})`
-    }
-
     const admissionsLines = admissions.map(formatAdmission)
     const dischargesLines = discharges.map(formatDischarge)
-    const notesLines = safeNotes.map(formatNote)
+
+    // NEW: Build grouped observation section
+    // -------------------------------------------
+    // Group notes by house_id in fixed order and format as:
+    // Resident – "Note text" (Shift)
+    // -------------------------------------------
+    const houseNoteBuckets = {
+      '49cf4cfa-e783-4932-b14d-fa1be226111f': [],
+      '308bb7cb-90f0-4e83-9d10-1c5b92c2bf0d': [],
+      '80ae39a3-be84-47e8-bada-6c59c466bbef': []
+    }
+
+    safeNotes.forEach((n) => {
+      const bucket = houseNoteBuckets[n.house_id]
+      if (!bucket) return
+
+      const residentName = getResidentName(n.resident_id)
+      const text = n.note_text || ''
+      const shift = n.shift_name || 'Shift not recorded'
+
+      // final line format requested:
+      // Resident Name – "Note text" (8AM–4PM)
+      bucket.push(`${residentName} – “${text}” (${shift})`)
+    })
 
     function renderList(lines) {
       if (!lines || !lines.length) return '<p>None.</p>'
       return `<ul>${lines.map((l) => `<li>${l}</li>`).join('')}</ul>`
     }
+
+    // Build the Observation Notes HTML section
+    let observationSectionHtml = `
+      <h3>Observation Notes (Past 24 Hours)</h3>
+      <p><strong>Total notes:</strong> ${safeNotes.length}</p>
+    `
+
+    HOUSE_ORDER.forEach((houseId) => {
+      const info = getHouseInfo(houseId)
+      const lines = houseNoteBuckets[houseId] || []
+
+      observationSectionHtml += `
+        <h4>${info.icon} ${info.label}</h4>
+        ${
+          lines.length === 0
+            ? '<p>No observations recorded.</p>'
+            : renderList(lines)
+        }
+      `
+    })
 
     // -------------------------------------------
     // 8. Build HTML body
@@ -241,9 +276,7 @@ exports.handler = async function (event, context) {
           : renderList(dischargesLines)
       }
 
-      <h3>Observation Notes Logged</h3>
-      <p><strong>Total notes:</strong> ${notesLines.length}</p>
-      ${notesLines.length === 0 ? '' : renderList(notesLines)}
+      ${observationSectionHtml}
 
       <p style="margin-top:20px;font-size:12px;color:#777;">
         Report generated automatically on ${now.toLocaleString('en-US', {
