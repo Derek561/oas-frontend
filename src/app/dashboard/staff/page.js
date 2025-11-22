@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabaseClient'
-import StaffModal from '@/components/modals/StaffModal'
+import StaffModal from './StaffModal';
 
 export default function StaffPage() {
   const [staffList, setStaffList] = useState([])
