@@ -1,56 +1,76 @@
-"use client";
+'use client'
 
-import { useEffect, useState } from "react";
-import { CRUD } from "@/lib/supabaseCRUD";
-import StaffModal from "./StaffModal";
+import { useState, useEffect } from 'react'
+import { supabase } from '@/lib/supabaseClient'
+import StaffModal from '@/components/modals/StaffModal'
 
 export default function StaffPage() {
-  const [staff, setStaff] = useState([]);
-  const [selected, setSelected] = useState(null);
+  const [staffList, setStaffList] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [selectedStaff, setSelectedStaff] = useState(null)
+  const [modalOpen, setModalOpen] = useState(false)
 
-  const loadStaff = async () => {
-    const data = await CRUD.read("staff");
-    setStaff(data);
-  };
+  // Load staff on mount
+  async function loadStaff() {
+    setLoading(true)
+    const { data, error } = await supabase
+      .from('staff')
+      .select('*')
+      .order('name')
+
+    if (!error) setStaffList(data)
+    setLoading(false)
+  }
 
   useEffect(() => {
-    loadStaff();
-  }, []);
+    loadStaff()
+  }, [])
+
+  function openAdd() {
+    setSelectedStaff(null)
+    setModalOpen(true)
+  }
+
+  function openEdit(staff) {
+    setSelectedStaff(staff)
+    setModalOpen(true)
+  }
 
   return (
-    <div className="max-w-6xl mx-auto bg-white rounded-lg shadow p-6 mt-6">
-      <div className="flex justify-between mb-4">
-        <h1 className="text-xl font-semibold">Staff</h1>
+    <div className="p-6">
+      <div className="flex justify-between items-center mb-6">
+        <h1 className="text-2xl font-semibold">Staff</h1>
         <button
-          onClick={() => setSelected({})}
+          onClick={openAdd}
           className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700"
         >
           + Add Staff
         </button>
       </div>
 
-      {staff.length === 0 ? (
-        <p>No staff found.</p>
+      {loading ? (
+        <p>Loading staff...</p>
       ) : (
-        <table className="w-full border text-left">
-          <thead className="bg-gray-100">
-            <tr>
-              <th className="p-2 border-b">Name</th>
-              <th className="p-2 border-b">Role</th>
-              <th className="p-2 border-b">Email</th>
-              <th className="p-2 border-b">Actions</th>
+        <table className="w-full border-collapse">
+          <thead>
+            <tr className="bg-gray-100">
+              <th className="border p-2 text-left">Name</th>
+              <th className="border p-2 text-left">Role</th>
+              <th className="border p-2 text-left">Email</th>
+              <th className="border p-2">Actions</th>
             </tr>
           </thead>
+
           <tbody>
-            {staff.map((s) => (
-              <tr key={s.id} className="hover:bg-gray-50">
-                <td className="p-2 border-b">{s.name}</td>
-                <td className="p-2 border-b">{s.role}</td>
-                <td className="p-2 border-b">{s.email}</td>
-                <td className="p-2 border-b">
+            {staffList.map((s) => (
+              <tr key={s.id}>
+                <td className="border p-2">{s.name}</td>
+                <td className="border p-2">{s.role}</td>
+                <td className="border p-2">{s.email}</td>
+                <td className="border p-2 text-center">
                   <button
-                    onClick={() => setSelected(s)}
-                    className="text-blue-600 hover:underline"
+                    onClick={() => openEdit(s)}
+                    className="bg-blue-500 text-white px-3 py-1 rounded hover:bg-blue-600"
                   >
                     Edit
                   </button>
@@ -61,16 +81,13 @@ export default function StaffPage() {
         </table>
       )}
 
-      {selected && (
+      {modalOpen && (
         <StaffModal
-          staff={selected}
-          onClose={() => setSelected(null)}
-          onSaved={() => {
-            setSelected(null);
-            loadStaff();
-          }}
+          staff={selectedStaff}
+          onClose={() => setModalOpen(false)}
+          onSaved={loadStaff}
         />
       )}
     </div>
-  );
+  )
 }

@@ -4,90 +4,98 @@ import { useState } from 'react'
 import { supabase } from '@/lib/supabaseClient'
 
 export default function StaffModal({ staff, onClose, onSaved }) {
+
   const [formData, setFormData] = useState({
     name: staff?.name || '',
     role: staff?.role || '',
     email: staff?.email || '',
   })
 
-  // 🔹 Handle input changes
+  const roles = [
+    "Admin",
+    "Manager",
+    "Support Staff",
+    "Maintenance"
+  ]
+
   function handleChange(e) {
     const { name, value } = e.target
-    setFormData((prev) => ({ ...prev, [name]: value }))
+    setFormData(prev => ({ ...prev, [name]: value }))
   }
 
-  // 🔹 Save or update staff
   async function handleSubmit(e) {
     e.preventDefault()
 
     try {
-      let data, error
-
+      let result
       if (staff?.id) {
-        // 🔸 Update existing staff
-        ;({ data, error } = await supabase
+        result = await supabase
           .from('staff')
           .update({
             name: formData.name,
             role: formData.role,
             email: formData.email,
-            updated_at: new Date(),
+            updated_at: new Date()
           })
           .eq('id', staff.id)
-          .select())
+          .select()
       } else {
-        // 🔸 Insert new staff
-        ;({ data, error } = await supabase
+        result = await supabase
           .from('staff')
-          .insert([
-            {
-              name: formData.name,
-              role: formData.role,
-              email: formData.email,
-              created_at: new Date(),
-              updated_at: new Date(),
-            },
-          ])
-          .select())
+          .insert([{
+            name: formData.name,
+            role: formData.role,
+            email: formData.email,
+            created_at: new Date(),
+            updated_at: new Date()
+          }])
+          .select()
       }
 
-      console.log('Insert/Update result:', { data, error })
-      if (error) throw error
+      if (result.error) throw result.error
 
       alert(`Staff member ${staff?.id ? 'updated' : 'added'} successfully.`)
-      if (onSaved) onSaved()
+      onSaved?.()
       onClose()
+
     } catch (err) {
-      console.error('Error saving staff:', err)
-      alert('There was an error saving this staff record.')
+      console.error(err)
+      alert('Error saving staff record.')
     }
   }
 
-  // 🔹 Delete a staff record
   async function handleDelete() {
     if (!staff?.id) return
     if (!confirm(`Delete ${staff.name}?`)) return
 
     try {
-      const { error } = await supabase.from('staff').delete().eq('id', staff.id)
+      const { error } = await supabase
+        .from('staff')
+        .delete()
+        .eq('id', staff.id)
+
       if (error) throw error
-      alert('Staff member deleted successfully.')
-      if (onSaved) onSaved()
+
+      alert('Staff member deleted.')
+      onSaved?.()
       onClose()
+
     } catch (err) {
-      console.error('Error deleting staff:', err)
-      alert('There was an error deleting this staff record.')
+      console.error(err)
+      alert('Error deleting staff.')
     }
   }
 
   return (
     <div className="fixed inset-0 flex items-center justify-center bg-black bg-opacity-30">
       <div className="bg-white p-6 rounded-lg shadow-lg w-full max-w-md">
+
         <h2 className="text-xl font-semibold mb-4">
           {staff ? 'Edit Staff' : 'Add Staff'}
         </h2>
 
         <form onSubmit={handleSubmit} className="space-y-3">
+          
           <input
             type="text"
             name="name"
@@ -97,6 +105,7 @@ export default function StaffModal({ staff, onClose, onSaved }) {
             className="border p-2 w-full rounded"
             required
           />
+
           <select
             name="role"
             value={formData.role}
@@ -105,10 +114,9 @@ export default function StaffModal({ staff, onClose, onSaved }) {
             required
           >
             <option value="">Select Role</option>
-            <option value="Manager">Manager</option>
-            <option value="Support Staff">Support Staff</option>
-            <option value="Maintenance">Maintenance</option>
+            {roles.map(r => <option key={r} value={r}>{r}</option>)}
           </select>
+
           <input
             type="email"
             name="email"
@@ -126,6 +134,7 @@ export default function StaffModal({ staff, onClose, onSaved }) {
             >
               Save
             </button>
+
             {staff && (
               <button
                 type="button"
@@ -135,6 +144,7 @@ export default function StaffModal({ staff, onClose, onSaved }) {
                 Delete
               </button>
             )}
+
             <button
               type="button"
               onClick={onClose}
@@ -143,7 +153,9 @@ export default function StaffModal({ staff, onClose, onSaved }) {
               Cancel
             </button>
           </div>
+
         </form>
+
       </div>
     </div>
   )
