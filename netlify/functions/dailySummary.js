@@ -36,28 +36,29 @@ export async function handler(event, context) {
       return HOUSE_NICKNAMES[houseId] || { label: 'Unknown House', icon: '⚪' };
     }
 
-    // ---------------------------------------------
-// 3. Census snapshot (house-level occupancy)
-// ---------------------------------------------
-const { data: rooms, error: roomsErr } = await supabase
-  .from('rooms')
-  .select('id, house_id, capacity, active_residents');
+    // --------------------------------------------
+// 3. Census snapshot (calculated via beds table)
+// --------------------------------------------
 
-if (roomsErr) throw roomsErr;
+const { data: beds, error: bedsErr } = await supabase
+  .from('beds')
+  .select('id, house_id, resident_id');
 
+if (bedsErr) throw bedsErr;
+
+// Group beds by house
 const censusByHouse = HOUSE_ORDER.map(hid => {
-  const houseRooms = rooms.filter(r => r.house_id === hid);
+  const houseBeds = beds.filter(b => b.house_id === hid);
 
-  const totalBeds = houseRooms.reduce((sum, r) => sum + (r.capacity || 0), 0);
-  const occupied = houseRooms.reduce((sum, r) => sum + (r.active_residents || 0), 0);
+  const totalBeds = houseBeds.length;
+  const occupied = houseBeds.filter(b => b.resident_id !== null).length;
   const available = totalBeds - occupied;
   const pct = totalBeds > 0 ? ((occupied / totalBeds) * 100).toFixed(1) : '0.0';
-  const house = HOUSE_NICKNAMES[hid] || { label: 'Unknown', icon: '🏠' };
 
   return {
     house_id: hid,
-    label: house.label,
-    icon: house.icon,
+    label: HOUSE_NICKNAMES[hid]?.label || 'Unknown',
+    icon: HOUSE_NICKNAMES[hid]?.icon || '🏠',
     totalBeds,
     occupied,
     available,
