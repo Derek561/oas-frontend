@@ -50,6 +50,11 @@ export async function handler(event, context) {
     const occupied = safeCensus.reduce((a, r) => a + (r.active_residents || 0), 0);
     const available = totalBeds - occupied;
     const pct = totalBeds > 0 ? ((occupied / totalBeds) * 100).toFixed(1) : '0.0';
+    // Build censusLines for HTML report
+const censusLines = safeCensus.map((r) => {
+  const house = HOUSE_NICKNAMES[r.house_id] || { label: 'Unknown', icon: '⚪' };
+  return `${house.icon} ${house.label} – Beds: ${r.capacity || 0}, Occupied: ${r.active_residents || 0}`;
+});
 
     // -------------------------------------------
     // 4. Events in last 24h
