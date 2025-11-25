@@ -26,9 +26,9 @@ export default function ResidentEditModal({ resident, open, onClose, onSaved }) 
   const [email, setEmail] = useState("");
   const [locLevel, setLocLevel] = useState("PHP");
 
-  // Admission event fields
-  const [uaLevel, setUaLevel] = useState("");
-  const [bacLevel, setBacLevel] = useState("");
+  // Admission event fields (map to ua_result / bac_result / ec_notes / notes)
+  const [uaResult, setUaResult] = useState("");
+  const [bacResult, setBacResult] = useState("");
   const [ecNotes, setEcNotes] = useState("");
   const [notes, setNotes] = useState("");
   const [contactVerified, setContactVerified] = useState(false);
@@ -56,14 +56,17 @@ export default function ResidentEditModal({ resident, open, onClose, onSaved }) 
 
       const { data, error: evtError } = await supabase
         .from("resident_events")
-        .select(`
+        .select(
+          `
           id,
-          ua_level,
-          bac_level,
+          ua_result,
+          bac_result,
           notes,
           event_details,
-          contact_verified
-        `)
+          contact_verified,
+          ec_notes
+        `
+        )
         .eq("resident_id", resident.id)
         .eq("event_type", "admission")
         .order("created_at", { ascending: false })
@@ -77,14 +80,15 @@ export default function ResidentEditModal({ resident, open, onClose, onSaved }) 
       }
 
       if (data) {
-        setUaLevel(data.ua_level || "");
-        setBacLevel(data.bac_level || "");
-        setEcNotes(data.event_details || "");
+        setUaResult(data.ua_result || "");
+        setBacResult(data.bac_result || "");
+        // Prefer explicit EC notes column; fall back to event_details if present
+        setEcNotes(data.ec_notes || data.event_details || "");
         setNotes(data.notes || "");
         setContactVerified(!!data.contact_verified);
       } else {
-        setUaLevel("");
-        setBacLevel("");
+        setUaResult("");
+        setBacResult("");
         setEcNotes("");
         setNotes("");
         setContactVerified(false);
@@ -126,7 +130,7 @@ export default function ResidentEditModal({ resident, open, onClose, onSaved }) 
         return;
       }
 
-      // 2) Upsert admission event (UA / BAC / EC / Notes)
+      // 2) Upsert admission event (UA / BAC / EC / Notes) → resident_events
       const { data: existingEvent, error: evtFetchError } = await supabase
         .from("resident_events")
         .select("id")
@@ -138,16 +142,27 @@ export default function ResidentEditModal({ resident, open, onClose, onSaved }) 
 
       if (evtFetchError) {
         console.error("Error loading admission event:", evtFetchError.message);
-        // we *do not* hard-fail the resident update for this
+        // Don't hard-fail the resident update if the event fetch fails
       } else {
         const eventPayload = {
           resident_id: resident.id,
+          house_id: resident.house_id || null,
           event_type: "admission",
-          ua_level: uaLevel || null,
-          bac_level: bacLevel || null,
-          event_details: ecNotes || null,        // ✅ SAVE EC NOTES CORRECTLY
-          contact_verified: !!contactVerified,   // ✅ SAVE CHECKBOX
+          // canonical clinical fields
+          ua_result: uaResult || null,
+          bac_result: bacResult || null,
+          ec_notes: ecNotes || null,
           notes: notes || null,
+          contact_verified: !!contactVerified,
+          // optional narrative + summary
+          event_details: "Intake clinical details (UA/BAC/EC/notes) updated",
+          // staff metadata left null for now (no staff context wired yet)
+          actor: null,
+          created_by: null,
+          submitted_by: null,
+          narrative: null,
+          discharge_reason: null,
+          discharge_type: null,
         };
 
         let evtUpsertError;
@@ -166,7 +181,10 @@ export default function ResidentEditModal({ resident, open, onClose, onSaved }) 
         }
 
         if (evtUpsertError) {
-          console.error("Error saving admission event:", evtUpsertError.message);
+          console.error(
+            "Error saving admission event:",
+            evtUpsertError.message
+          );
           alert(
             `Resident core info saved, but UA/BAC/EC notes did NOT save: ${evtUpsertError.message}`
           );
@@ -176,7 +194,7 @@ export default function ResidentEditModal({ resident, open, onClose, onSaved }) 
       }
 
       alert("Resident updated.");
-      if (onSaved) onSaved();   // ✅ LET PARENT REFRESH LIST
+      if (onSaved) onSaved();
       if (onClose) onClose();
     } catch (err) {
       console.error("Unexpected error saving resident:", err);
@@ -197,6 +215,19 @@ export default function ResidentEditModal({ resident, open, onClose, onSaved }) 
         <h2 className="mb-4 text-lg font-semibold">
           Edit Resident – {resident.last_name}, {resident.first_name}
         </h2>
+
+        {/* View History Button */}
+        <div className="mb-4 flex justify-end">
+          <button
+            type="button"
+            onClick={() =>
+              (window.location.href = `/dashboard/residents/${resident.id}/history`)
+            }
+            className="text-blue-600 underline hover:text-blue-800 text-sm"
+          >
+            View Full History
+          </button>
+        </div>
 
         <form onSubmit={handleSubmit} className="space-y-4">
           {/* Basic Info */}
@@ -306,12 +337,12 @@ export default function ResidentEditModal({ resident, open, onClose, onSaved }) 
             <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
               <div>
                 <label className="block text-sm font-medium text-gray-700">
-                  UA Level / Result
+                  UA Result
                 </label>
                 <input
                   type="text"
-                  value={uaLevel}
-                  onChange={(e) => setUaLevel(e.target.value)}
+                  value={uaResult}
+                  onChange={(e) => setUaResult(e.target.value)}
                   className="mt-1 w-full rounded border border-gray-300 p-2 text-sm"
                   placeholder="e.g., Negative, THC+, EtG+, etc."
                 />
@@ -322,8 +353,8 @@ export default function ResidentEditModal({ resident, open, onClose, onSaved }) 
                 </label>
                 <input
                   type="text"
-                  value={bacLevel}
-                  onChange={(e) => setBacLevel(e.target.value)}
+                  value={bacResult}
+                  onChange={(e) => setBacResult(e.target.value)}
                   className="mt-1 w-full rounded border border-gray-300 p-2 text-sm"
                   placeholder="e.g., 0.000, 0.030, refusal, etc."
                 />
