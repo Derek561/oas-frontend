@@ -36,24 +36,33 @@ export async function handler(event, context) {
       return HOUSE_NICKNAMES[houseId] || { label: 'Unknown House', icon: '⚪' };
     }
 
-    // -------------------------------------------
-    // 3. Census snapshot
-    // -------------------------------------------
-    const { data: census, error: censusErr } = await supabase
-      .from('vw_room_occupancy')
-      .select('*');
+    // ---------------------------------------------
+// 3. Census snapshot (house-level occupancy)
+// ---------------------------------------------
+const { data: rooms, error: roomsErr } = await supabase
+  .from('rooms')
+  .select('id, house_id, capacity, active_residents');
 
-    if (censusErr) throw censusErr;
+if (roomsErr) throw roomsErr;
 
-    const safeCensus = census || [];
-    const totalBeds = safeCensus.reduce((a, r) => a + (r.capacity || 0), 0);
-    const occupied = safeCensus.reduce((a, r) => a + (r.active_residents || 0), 0);
-    const available = totalBeds - occupied;
-    const pct = totalBeds > 0 ? ((occupied / totalBeds) * 100).toFixed(1) : '0.0';
-    // Build censusLines for HTML report
-const censusLines = safeCensus.map((r) => {
-  const house = HOUSE_NICKNAMES[r.house_id] || { label: 'Unknown', icon: '⚪' };
-  return `${house.icon} ${house.label} – Beds: ${r.capacity || 0}, Occupied: ${r.active_residents || 0}`;
+const censusByHouse = HOUSE_ORDER.map(hid => {
+  const houseRooms = rooms.filter(r => r.house_id === hid);
+
+  const totalBeds = houseRooms.reduce((sum, r) => sum + (r.capacity || 0), 0);
+  const occupied = houseRooms.reduce((sum, r) => sum + (r.active_residents || 0), 0);
+  const available = totalBeds - occupied;
+  const pct = totalBeds > 0 ? ((occupied / totalBeds) * 100).toFixed(1) : '0.0';
+  const house = HOUSE_NICKNAMES[hid] || { label: 'Unknown', icon: '🏠' };
+
+  return {
+    house_id: hid,
+    label: house.label,
+    icon: house.icon,
+    totalBeds,
+    occupied,
+    available,
+    pct
+  };
 });
 
     // -------------------------------------------
@@ -189,13 +198,22 @@ const observationSectionHtml = `
 
       <h3>Census Snapshot</h3>
       <ul>
-        ${censusLines.map((l) => `<li>${l}</li>`).join('')}
-      </ul>
+  ${censusByHouse
+    .map(c =>
+      `<li>${c.icon} <strong>${c.label}:</strong> ${c.occupied} / ${c.totalBeds}</li>`
+    )
+    .join('')}
+</ul>
 
-      <p><strong>Total Beds:</strong> ${totalBeds}</p>
-      <p><strong>Occupied:</strong> ${occupied}</p>
-      <p><strong>Available:</strong> ${available}</p>
-      <p><strong>Occupancy Rate:</strong> ${pct}%</p>
+<p><strong>Total Beds:</strong> ${censusByHouse.reduce((n, h) => n + h.totalBeds, 0)}</p>
+<p><strong>Occupied:</strong> ${censusByHouse.reduce((n, h) => n + h.occupied, 0)}</p>
+<p><strong>Available:</strong> ${censusByHouse.reduce((n, h) => n + h.available, 0)}</p>
+<p><strong>Occupancy Rate:</strong> ${
+  (
+    censusByHouse.reduce((n, h) => n + h.occupied, 0) /
+    censusByHouse.reduce((n, h) => n + h.totalBeds, 0)
+  * 100).toFixed(1)
+}%</p>
 
       <h3>Admissions (Past 24 Hours)</h3>
       ${
