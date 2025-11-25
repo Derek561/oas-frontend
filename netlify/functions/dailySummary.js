@@ -1,8 +1,8 @@
 // netlify/functions/dailySummary.js
-const { createClient } = require('@supabase/supabase-js')
+import { createClient } from '@supabase/supabase-js';
 
-exports.handler = async function (event, context) {
-  console.log('Running DAILY SUMMARY (production)…')
+export async function handler(event, context) {
+  console.log("Running DAILY SUMMARY (production)..."); // rebuild trigger
 
   try {
     // -------------------------------------------
@@ -11,240 +11,143 @@ exports.handler = async function (event, context) {
     const supabase = createClient(
       process.env.SUPABASE_URL,
       process.env.SUPABASE_SERVICE_ROLE_KEY
-    )
+    );
 
-    const now = new Date()
-    const last24 = new Date(now.getTime() - 24 * 60 * 60 * 1000).toISOString()
+    const now = new Date();
+    const last24 = new Date(now.getTime() - 24 * 60 * 60 * 1000).toISOString();
 
     // -------------------------------------------
     // 2. House nickname + icon map
     // -------------------------------------------
     const HOUSE_NICKNAMES = {
-      // Oceanside House A – "8th Court"
       '49cf4cfa-e783-4932-b14d-fa1be226111f': { label: '8th Court', icon: '🟡' },
-
-      // Oceanside House B – "626"
       '308bb7cb-90f0-4e83-9d10-1c5b92c2bf0d': { label: '626', icon: '🟣' },
-
-      // Blue Building – "Blue Building"
       '80ae39a3-be84-47e8-bada-6c59c466bbef': { label: 'Blue Building', icon: '🔵' }
-    }
+    };
 
-    // fixed order for reporting: 8th Court → 626 → Blue
     const HOUSE_ORDER = [
       '49cf4cfa-e783-4932-b14d-fa1be226111f',
       '308bb7cb-90f0-4e83-9d10-1c5b92c2bf0d',
       '80ae39a3-be84-47e8-bada-6c59c466bbef'
-    ]
+    ];
 
     function getHouseInfo(houseId) {
-      if (!houseId) {
-        return { label: 'Unknown House', icon: '⚪' }
-      }
-      return (
-        HOUSE_NICKNAMES[houseId] || {
-          label: 'Unknown House',
-          icon: '⚪'
-        }
-      )
+      if (!houseId) return { label: 'Unknown House', icon: '⚪' };
+      return HOUSE_NICKNAMES[houseId] || { label: 'Unknown House', icon: '⚪' };
     }
 
     // -------------------------------------------
-    // 3. Census snapshot (vw_room_occupancy)
+    // 3. Census snapshot
     // -------------------------------------------
     const { data: census, error: censusErr } = await supabase
       .from('vw_room_occupancy')
-      .select('*')
+      .select('*');
 
-    if (censusErr) throw censusErr
+    if (censusErr) throw censusErr;
 
-    const safeCensus = census || []
-
-    const totalBeds = safeCensus.reduce((a, r) => a + (r.capacity || 0), 0)
-    const occupied = safeCensus.reduce(
-      (a, r) => a + (r.active_residents || 0),
-      0
-    )
-    const available = totalBeds - occupied
-    const pct =
-      totalBeds > 0 ? ((occupied / totalBeds) * 100).toFixed(1) : '0.0'
-
-    // Per-house buckets for the pretty list
-    const houseBuckets = {}
-    for (const row of safeCensus) {
-      const key = row.house_id || 'unknown'
-      if (!houseBuckets[key]) {
-        houseBuckets[key] = { beds: 0, occupied: 0 }
-      }
-      houseBuckets[key].beds += row.capacity || 0
-      houseBuckets[key].occupied += row.active_residents || 0
-    }
+    const safeCensus = census || [];
+    const totalBeds = safeCensus.reduce((a, r) => a + (r.capacity || 0), 0);
+    const occupied = safeCensus.reduce((a, r) => a + (r.active_residents || 0), 0);
+    const available = totalBeds - occupied;
+    const pct = totalBeds > 0 ? ((occupied / totalBeds) * 100).toFixed(1) : '0.0';
 
     // -------------------------------------------
-    // 4. Events in last 24h (admissions + discharges)
+    // 4. Events in last 24h
+    // FIXED: ua_result, bac_result, event_details
     // -------------------------------------------
     const { data: events, error: eventsErr } = await supabase
       .from('resident_events')
       .select(
-        'id, resident_id, house_id, event_type, ua_level, bac_level, event_details, discharge_reason, notes, created_at'
+        'id, resident_id, house_id, event_type, ua_result, bac_result, event_details, discharge_reason, notes, created_at'
       )
       .gte('created_at', last24)
-      .in('event_type', ['admission', 'discharge'])
+      .in('event_type', ['admission', 'discharge']);
 
-    if (eventsErr) throw eventsErr
+    if (eventsErr) throw eventsErr;
 
-    const safeEvents = events || []
-    const admissions = safeEvents.filter((e) => e.event_type === 'admission')
-    const discharges = safeEvents.filter((e) => e.event_type === 'discharge')
+    const safeEvents = events || [];
+    const admissions = safeEvents.filter((e) => e.event_type === 'admission');
+    const discharges = safeEvents.filter((e) => e.event_type === 'discharge');
 
     // -------------------------------------------
-    // 5. Observation notes in last 24h
-    //    (Now grouped by house in the email)
+    // 5. Observation notes
     // -------------------------------------------
     const { data: notes, error: notesErr } = await supabase
       .from('observation_notes')
       .select('id, resident_id, house_id, note_text, shift_name, created_at')
-      .gte('created_at', last24)
+      .gte('created_at', last24);
 
-    if (notesErr) throw notesErr
+    if (notesErr) throw notesErr;
 
-    const safeNotes = notes || []
+    const safeNotes = notes || [];
 
     // -------------------------------------------
     // 6. Resident names lookup
     // -------------------------------------------
-    const residentIds = new Set()
+    const residentIds = new Set();
+    safeEvents.forEach((e) => residentIds.add(e.resident_id));
+    safeNotes.forEach((n) => residentIds.add(n.resident_id));
 
-    admissions.forEach((e) => e.resident_id && residentIds.add(e.resident_id))
-    discharges.forEach((e) => e.resident_id && residentIds.add(e.resident_id))
-    safeNotes.forEach((n) => n.resident_id && residentIds.add(n.resident_id))
-
-    let residentMap = new Map()
+    let residentMap = new Map();
 
     if (residentIds.size > 0) {
       const { data: residents, error: resErr } = await supabase
         .from('residents')
         .select('id, first_name, last_name')
-        .in('id', Array.from(residentIds))
+        .in('id', Array.from(residentIds));
 
-      if (resErr) throw resErr
+      if (resErr) throw resErr;
 
       residentMap = new Map(
-        (residents || []).map((r) => [
+        residents.map((r) => [
           r.id,
-          {
-            name: `${r.first_name || ''} ${r.last_name || ''}`.trim()
-          }
+          { name: `${r.first_name || ''} ${r.last_name || ''}`.trim() }
         ])
-      )
+      );
     }
 
     function getResidentName(rid) {
-      const r = residentMap.get(rid)
-      if (!r) return 'Unknown Resident'
-      return r.name || 'Unknown Resident'
+      return residentMap.get(rid)?.name || 'Unknown Resident';
     }
 
     function fmtDateTime(iso) {
-      if (!iso) return ''
       try {
         return new Date(iso).toLocaleString('en-US', {
           timeZone: 'America/New_York'
-        })
+        });
       } catch {
-        return iso
+        return iso;
       }
     }
 
     // -------------------------------------------
-    // 7. Format lines
+    // 7. Format lines (FIXED FIELDS)
     // -------------------------------------------
-
-    // Census – per-house bullets
-    const censusLines = Object.entries(houseBuckets).map(
-      ([houseId, stats]) => {
-        const info = getHouseInfo(houseId === 'unknown' ? null : houseId)
-        return `${info.icon} <strong>${info.label}:</strong> ${stats.occupied} / ${stats.beds}`
-      }
-    )
-
     function formatAdmission(ev) {
-      const house = getHouseInfo(ev.house_id)
-      const name = getResidentName(ev.resident_id)
-      const ts = fmtDateTime(ev.created_at)
+      const house = getHouseInfo(ev.house_id);
+      const name = getResidentName(ev.resident_id);
+      const ts = fmtDateTime(ev.created_at);
 
-      const uaPart = ev.ua_level ? ` – UA: ${ev.ua_level}` : ''
-      const bacPart = ev.bac_level ? ` – BAC: ${ev.bac_level}` : ''
+      const uaPart = ev.ua_result ? ` – UA: ${ev.ua_result}` : '';
+      const bacPart = ev.bac_result ? ` – BAC: ${ev.bac_result}` : '';
+      const detailPart = ev.event_details ? ` – ${ev.event_details}` : '';
 
-      const detailSource = ev.event_details || ev.notes
-      const detailPart = detailSource ? ` – ${detailSource}` : ''
-
-      // (Unit/room not included yet; not exposed to this function.)
-      return `${house.icon} ${house.label} – ${name}${uaPart}${bacPart}${detailPart} (${ts})`
+      return `${house.icon} ${house.label} – ${name}${uaPart}${bacPart}${detailPart} (${ts})`;
     }
 
     function formatDischarge(ev) {
-      const house = getHouseInfo(ev.house_id)
-      const name = getResidentName(ev.resident_id)
-      const ts = fmtDateTime(ev.created_at)
+      const house = getHouseInfo(ev.house_id);
+      const name = getResidentName(ev.resident_id);
+      const ts = fmtDateTime(ev.created_at);
 
-      const reason = ev.discharge_reason || 'No reason recorded'
-      const notesPart = ev.notes ? ` – ${ev.notes}` : ''
+      const reason = ev.discharge_reason || 'No reason recorded';
+      const notesPart = ev.notes ? ` – ${ev.notes}` : '';
 
-      return `${house.icon} ${house.label} – ${name} – ${reason}${notesPart} (${ts})`
+      return `${house.icon} ${house.label} – ${name} – ${reason}${notesPart} (${ts})`;
     }
 
-    const admissionsLines = admissions.map(formatAdmission)
-    const dischargesLines = discharges.map(formatDischarge)
-
-    // NEW: Build grouped observation section
-    // -------------------------------------------
-    // Group notes by house_id in fixed order and format as:
-    // Resident – "Note text" (Shift)
-    // -------------------------------------------
-    const houseNoteBuckets = {
-      '49cf4cfa-e783-4932-b14d-fa1be226111f': [],
-      '308bb7cb-90f0-4e83-9d10-1c5b92c2bf0d': [],
-      '80ae39a3-be84-47e8-bada-6c59c466bbef': []
-    }
-
-    safeNotes.forEach((n) => {
-      const bucket = houseNoteBuckets[n.house_id]
-      if (!bucket) return
-
-      const residentName = getResidentName(n.resident_id)
-      const text = n.note_text || ''
-      const shift = n.shift_name || 'Shift not recorded'
-
-      // final line format requested:
-      // Resident Name – "Note text" (8AM–4PM)
-      bucket.push(`${residentName} – “${text}” (${shift})`)
-    })
-
-    function renderList(lines) {
-      if (!lines || !lines.length) return '<p>None.</p>'
-      return `<ul>${lines.map((l) => `<li>${l}</li>`).join('')}</ul>`
-    }
-
-    // Build the Observation Notes HTML section
-    let observationSectionHtml = `
-      <h3>Observation Notes (Past 24 Hours)</h3>
-      <p><strong>Total notes:</strong> ${safeNotes.length}</p>
-    `
-
-    HOUSE_ORDER.forEach((houseId) => {
-      const info = getHouseInfo(houseId)
-      const lines = houseNoteBuckets[houseId] || []
-
-      observationSectionHtml += `
-        <h4>${info.icon} ${info.label}</h4>
-        ${
-          lines.length === 0
-            ? '<p>No observations recorded.</p>'
-            : renderList(lines)
-        }
-      `
-    })
+    const admissionsLines = admissions.map(formatAdmission);
+    const dischargesLines = discharges.map(formatDischarge);
 
     // -------------------------------------------
     // 8. Build HTML body
@@ -334,13 +237,16 @@ exports.handler = async function (event, context) {
 
     const result = await response.json()
     console.log('Resend success:', result)
-
+    // -------------------------------------------
+    // SUCCESS
+    // -------------------------------------------
     return {
       statusCode: 200,
       body: JSON.stringify({ success: true })
-    }
+    };
+
   } catch (err) {
-    console.error('Daily Summary Error:', err)
+    console.error("Daily Summary Error:", err);
     return {
       statusCode: 500,
       body: JSON.stringify({
@@ -348,6 +254,6 @@ exports.handler = async function (event, context) {
         message: err.message,
         code: err.code || null
       })
-    }
+    };
   }
 }
