@@ -155,6 +155,14 @@ const censusLines = safeCensus.map((r) => {
     const dischargesLines = discharges.map(formatDischarge);
 
     // -------------------------------------------
+// Helper: render list items in HTML
+// -------------------------------------------
+function renderList(arr) {
+  if (!arr || arr.length === 0) return '<li>No entries recorded</li>';
+  return arr.map((item) => `<li>${item}</li>`).join('');
+}
+
+    // -------------------------------------------
     // 8. Build HTML body
     // -------------------------------------------
     const htmlBody = `
