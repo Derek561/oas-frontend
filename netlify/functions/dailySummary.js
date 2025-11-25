@@ -162,6 +162,25 @@ function renderList(arr) {
   return arr.map((item) => `<li>${item}</li>`).join('');
 }
 
+// 7. Build Observation Notes HTML
+const observationSectionHtml = `
+  <h3>Observation Notes (Past 24 Hours)</h3>
+  <p><strong>Total notes:</strong> ${safeNotes.length}</p>
+
+  ${
+    safeNotes.length === 0
+      ? '<p>No observations recorded.</p>'
+      : `<ul>
+          ${safeNotes
+            .map((n) => {
+              const house = HOUSE_NICKNAMES[n.house_id] || { label: 'Unknown', icon: '🏠' };
+              const ts = new Date(n.created_at).toLocaleString('en-US', { timeZone: 'America/New_York' });
+              return `<li>${house.icon} <strong>${house.label}</strong> – ${n.note_text} (${ts})</li>`;
+            })
+            .join('')}
+        </ul>`
+  }
+`;
     // -------------------------------------------
     // 8. Build HTML body
     // -------------------------------------------
@@ -191,8 +210,7 @@ function renderList(arr) {
           ? '<p>No discharges.</p>'
           : renderList(dischargesLines)
       }
-
-      ${observationSectionHtml}
+ ${observationSectionHtml}     
 
       <p style="margin-top:20px;font-size:12px;color:#777;">
         Report generated automatically on ${now.toLocaleString('en-US', {
