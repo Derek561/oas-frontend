@@ -1,6 +1,6 @@
 // netlify/functions/dailySummary.js
 import { createClient } from '@supabase/supabase-js';
-import Resend from 'resend';
+import { Resend } from 'resend';
 
 export const handler = async function (event, context) {
   console.log("Running DAILY SUMMARY (production)...");
