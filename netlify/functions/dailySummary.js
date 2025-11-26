@@ -209,19 +209,21 @@ Report generated automatically on ${new Date().toLocaleString('en-US', {
     const payload = {
       from: 'Oceanside Housing Reports <reports@oceansidehousing.llc>',
       to: [
-        'ocean1@oceansidehousing.llc',
-        'ocean2@oceansidehousing.llc',
-        'derek@simplerecovery.net',
-        'heidi@simplerecovery.net',
-        'matt@simplerecovery.net',
-        'cathy@simplerecovery.net',
-        'drew@simplerecovery.net',
-        'jacquelyn@simplerecovery.net',
-        'iris@simplerecovery.net',
-        'paul@simplerecovery.net',
-        'laurie@simplerecovery.net',
-        'amy@simplerecovery.net'
-      ],
+  "ocean1@oceansidehousing.llc",
+  "ocean2@oceansidehousing.llc",
+  "derek@oceansidehousing.llc",
+  "heidi@simplerecovery.net",
+  "matt@simplerecovery.net",
+  "cathy@simplerecovery.net",
+  "dom@simplerecovery.net",
+  "drew@simplerecovery.net",
+  "jacquelyn@simplerecovery.net",
+  "iris@simplerecovery.net",
+  "paul@simplerecovery.net",
+  "laurie@simplerecovery.net",
+  "amy@simplerecovery.net"
+],
+
       subject: `Oceanside Housing – Executive Summary (${new Date().toLocaleDateString('en-US')})`,
       html: htmlBody
     };
