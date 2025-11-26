@@ -211,8 +211,6 @@ Report generated automatically on ${new Date().toLocaleString('en-US', {
       to: [
         'ocean1@oceansidehousing.llc',
         'ocean2@oceansidehousing.llc',
-        'ocean3@oceansidehousing.llc',
-        'oceanz@oceansidehousing.llc',
         'derek@simplerecovery.net',
         'heidi@simplerecovery.net',
         'matt@simplerecovery.net',
