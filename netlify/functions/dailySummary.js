@@ -36,29 +36,32 @@ export async function handler(event, context) {
       return HOUSE_NICKNAMES[houseId] || { label: 'Unknown House', icon: '⚪' };
     }
 
-    // --------------------------------------------
-// 3. Census snapshot (calculated via beds table)
-// --------------------------------------------
+   // -------------------------------
+// 3. Census snapshot (house-level)
+// -------------------------------
 
-const { data: beds, error: bedsErr } = await supabase
-  .from('beds')
-  .select('id, house_id, resident_id');
+// Use view instead of raw tables
+const { data: rooms, error: roomsErr } = await supabase
+  .from('vw_room_occupancy')
+  .select('*');
 
-if (bedsErr) throw bedsErr;
+if (roomsErr) throw roomsErr;
 
-// Group beds by house
+// Build summary grouped by house
 const censusByHouse = HOUSE_ORDER.map(hid => {
-  const houseBeds = beds.filter(b => b.house_id === hid);
+  const houseRooms = rooms.filter(r => r.house_id === hid);
 
-  const totalBeds = houseBeds.length;
-  const occupied = houseBeds.filter(b => b.resident_id !== null).length;
+  const totalBeds = houseRooms.reduce((sum, r) => sum + (r.capacity || 0), 0);
+  const occupied = houseRooms.reduce((sum, r) => sum + (r.occupied || 0), 0);
   const available = totalBeds - occupied;
   const pct = totalBeds > 0 ? ((occupied / totalBeds) * 100).toFixed(1) : '0.0';
 
+  const house = HOUSE_NICKNAMES[hid] ?? { label: 'Unknown', icon: '🏠' };
+
   return {
     house_id: hid,
-    label: HOUSE_NICKNAMES[hid]?.label || 'Unknown',
-    icon: HOUSE_NICKNAMES[hid]?.icon || '🏠',
+    label: house.label,
+    icon: house.icon,
     totalBeds,
     occupied,
     available,
@@ -191,52 +194,56 @@ const observationSectionHtml = `
         </ul>`
   }
 `;
-    // -------------------------------------------
-    // 8. Build HTML body
-    // -------------------------------------------
-    const htmlBody = `
-      <h2>Oceanside Housing – Executive Summary (Past 24 Hours)</h2>
+    // -------------------------------------------------------------
+// 8. Build HTML Body (Clean, Corrected for beds-based census)
+// -------------------------------------------------------------
+const totalBedsAll = censusByHouse.reduce((n, h) => n + h.totalBeds, 0);
+const occupiedAll = censusByHouse.reduce((n, h) => n + h.occupied, 0);
+const availableAll = censusByHouse.reduce((n, h) => n + h.available, 0);
+const pctAll = totalBedsAll > 0
+  ? ((occupiedAll / totalBedsAll) * 100).toFixed(1)
+  : '0.0';
 
-      <h3>Census Snapshot</h3>
-      <ul>
-  ${censusByHouse
-    .map(c =>
-      `<li>${c.icon} <strong>${c.label}:</strong> ${c.occupied} / ${c.totalBeds}</li>`
-    )
-    .join('')}
-</ul>
+const htmlBody = `
+  <h2>Oceanside Housing ▪ Executive Summary (Past 24 Hours)</h2>
 
-<p><strong>Total Beds:</strong> ${censusByHouse.reduce((n, h) => n + h.totalBeds, 0)}</p>
-<p><strong>Occupied:</strong> ${censusByHouse.reduce((n, h) => n + h.occupied, 0)}</p>
-<p><strong>Available:</strong> ${censusByHouse.reduce((n, h) => n + h.available, 0)}</p>
-<p><strong>Occupancy Rate:</strong> ${
-  (
-    censusByHouse.reduce((n, h) => n + h.occupied, 0) /
-    censusByHouse.reduce((n, h) => n + h.totalBeds, 0)
-  * 100).toFixed(1)
-}%</p>
+  <h3>Census Snapshot</h3>
+  <ul>
+    ${censusByHouse
+      .map(
+        (c) =>
+          `<li>${c.icon} <strong>${c.label}</strong>: ${c.occupied} / ${c.totalBeds}</li>`
+      )
+      .join("")}
+  </ul>
 
-      <h3>Admissions (Past 24 Hours)</h3>
-      ${
-        admissionsLines.length === 0
-          ? '<p>No admissions.</p>'
-          : renderList(admissionsLines)
-      }
+  <p><strong>Total Beds:</strong> ${totalBedsAll}</p>
+  <p><strong>Occupied:</strong> ${occupiedAll}</p>
+  <p><strong>Available:</strong> ${availableAll}</p>
+  <p><strong>Occupancy Rate:</strong> ${pctAll}%</p>
 
-      <h3>Discharges (Past 24 Hours)</h3>
-      ${
-        dischargesLines.length === 0
-          ? '<p>No discharges.</p>'
-          : renderList(dischargesLines)
-      }
- ${observationSectionHtml}     
+  <h3>Admissions (Past 24 Hours)</h3>
+  ${
+    admissionsLines.length === 0
+      ? "<p>No admissions.</p>"
+      : renderList(admissionsLines)
+  }
 
-      <p style="margin-top:20px;font-size:12px;color:#777;">
-        Report generated automatically on ${now.toLocaleString('en-US', {
-          timeZone: 'America/New_York'
-        })}.
-      </p>
-    `
+  <h3>Discharges (Past 24 Hours)</h3>
+  ${
+    dischargesLines.length === 0
+      ? "<p>No discharges.</p>"
+      : renderList(dischargesLines)
+  }
+
+  ${observationSectionHtml}
+
+  <p style="margin-top:20px;font-size:12px;color:#777;">
+    Report generated automatically on ${new Date().toLocaleString("en-US", {
+      timeZone: "America/New_York",
+    })}
+  </p>
+`;
 
     // -------------------------------------------
     // 9. Send email via Resend
